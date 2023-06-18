@@ -12,5 +12,5 @@ mkdir -p /data_lake/clickhouse-data
 mkdir -p /data_lake/posthog/posthog
 mkdir -p /data_lake/posthog/docker
 
-cp -r ~/git/posthog/posthog/idl /data_lake/posthog/posthog/
-cp -r ~/git/posthog/docker/clickhouse /data_lake/posthog/docker/
+cp -r /home/wd/git/posthog/posthog/idl /data_lake/posthog/posthog/
+cp -r /home/wd/git/posthog/docker/clickhouse /data_lake/posthog/docker/
