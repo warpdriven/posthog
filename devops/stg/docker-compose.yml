@@ -7,59 +7,105 @@
 
 services:
     db:
-        extends:
-            file: docker-compose.base.yml
-            service: db
+        image: postgres:12-alpine
+        restart: on-failure
+        environment:
+          POSTGRES_USER: posthog
+          POSTGRES_DB: posthog
+          POSTGRES_PASSWORD: posthog
+        healthcheck:
+          test: [ 'CMD-SHELL', 'pg_isready -U posthog' ]
+          interval: 5s
+          timeout: 5s
         volumes:
-            - postgres-data:/var/lib/postgresql/data
+          - /data_lake/postgres-data:/var/lib/postgresql/data
     redis:
-        extends:
-            file: docker-compose.base.yml
-            service: redis
+        image: redis:6.2.7-alpine
+        restart: on-failure
+        command: redis-server --maxmemory-policy allkeys-lru --maxmemory 200mb
+
     zookeeper:
-      extends:
-        file: docker-compose.base.yml
-        service: zookeeper
-      volumes:
-        - zookeeper-datalog:/datalog
-        - zookeeper-data:/data
-        - zookeeper-logs:/logs
+        image: zookeeper:3.7.0
+        restart: on-failure
+        volumes:
+          - /data_lake/zookeeper/zookeeper-datalog:/datalog
+          - /data_lake/zookeeper/zookeeper-data:/data
+          - /data_lake/zookeeper/zookeeper-logs:/logs
+
     kafka:
-      extends:
-        file: docker-compose.base.yml
-        service: kafka
+        image: bitnami/kafka:2.8.1-debian-10-r99
+        restart: on-failure
+        depends_on:
+          - zookeeper
+        environment:
+          KAFKA_BROKER_ID: 1001
+          KAFKA_CFG_RESERVED_BROKER_MAX_ID: 1001
+          KAFKA_CFG_LISTENERS: PLAINTEXT://:9092
+          KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+          KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+          ALLOW_PLAINTEXT_LISTENER: 'true'
+
     clickhouse:
         #
         # Note: please keep the default version in sync across
         #       `posthog` and the `charts-clickhouse` repos
         #
-        extends:
-            file: docker-compose.base.yml
-            service: clickhouse
+        image: ${CLICKHOUSE_SERVER_IMAGE:-clickhouse/clickhouse-server:23.4.2.11}
         restart: on-failure
         depends_on:
-            - kafka
-            - zookeeper
+          - kafka
+          - zookeeper
         volumes:
-            - ./posthog/posthog/idl:/idl
-            - ./posthog/docker/clickhouse/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
-            - ./posthog/docker/clickhouse/config.xml:/etc/clickhouse-server/config.xml
-            - ./posthog/docker/clickhouse/users.xml:/etc/clickhouse-server/users.xml
-            - clickhouse-data:/var/lib/clickhouse
-    worker:
-        extends:
-            file: docker-compose.base.yml
-            service: worker
+            - /data_lake/posthog/posthog/idl:/idl
+            - /data_lake/posthog/docker/clickhouse/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+            - /data_lake/posthog/docker/clickhouse/config.xml:/etc/clickhouse-server/config.xml
+            - /data_lake/posthog/docker/clickhouse/users.xml:/etc/clickhouse-server/users.xml
+            - /data_lake/clickhouse-data:/var/lib/clickhouse
+    worker: &worker
+        command: ./bin/docker-worker-celery --with-scheduler
+        restart: on-failure
+        depends_on:
+          - db
+          - redis
+          - clickhouse
+          - kafka
+          - object_storage
         environment:
-            SENTRY_DSN: 'https://public@sentry.example.com/1'
-            SITE_URL: https://track-stg.warpdriven.ai
-            SECRET_KEY: b0020abffdc51b3c2907589a97aff15dba856f9ee11483b1e2e76250
+          DISABLE_SECURE_SSL_REDIRECT: 'true'
+          IS_BEHIND_PROXY: 'true'
+          DATABASE_URL: 'postgres://posthog:posthog@db:5432/posthog'
+          CLICKHOUSE_HOST: 'clickhouse'
+          CLICKHOUSE_DATABASE: 'posthog'
+          CLICKHOUSE_SECURE: 'false'
+          CLICKHOUSE_VERIFY: 'false'
+          KAFKA_URL: 'kafka://kafka'
+          SESSION_RECORDING_KAFKA_URL: 'kafka://kafka'
+          REDIS_URL: 'redis://redis:6379/'
+          PGHOST: db
+          PGUSER: posthog
+          PGPASSWORD: posthog
+          DEPLOYMENT: hobby
+          SENTRY_DSN: 'https://public@sentry.example.com/1'
+          SITE_URL: https://track-stg.warpdriven.ai
+          SECRET_KEY: b0020abffdc51b3c2907589a97aff15dba856f9ee11483b1e2e76250
         image: posthog/posthog:latest
+
+    object_storage:
+      image: minio/minio:RELEASE.2022-06-25T15-50-16Z
+      restart: on-failure
+      environment:
+        MINIO_ROOT_USER: object_storage_root_user
+        MINIO_ROOT_PASSWORD: object_storage_root_password
+      entrypoint: sh
+      command: -c 'mkdir -p /data/posthog && minio server --address ":19000" --console-address ":19001" /data' # create the 'posthog' bucket before starting the service
+      volumes:
+        - /data_lake/object_storage:/data
+
     web:
-        extends:
-            file: docker-compose.base.yml
-            service: web
-        command: /compose/start
+        <<: *worker
+#        command: ./bin/start-backend & ./bin/start-frontend
+        restart: on-failure
+        command: ./bin/start-backend & ./bin/start-frontend & /compose/start
         volumes:
             - ./compose:/compose
         image: posthog/posthog:latest
@@ -67,15 +113,15 @@ services:
             SENTRY_DSN: 'https://public@sentry.example.com/1'
             SITE_URL: https://track-stg.warpdriven.ai
             SECRET_KEY: b0020abffdc51b3c2907589a97aff15dba856f9ee11483b1e2e76250
-    plugins:
-        extends:
-            file: docker-compose.base.yml
-            service: plugins
-        image: posthog/posthog:latest
-        environment:
-            SENTRY_DSN: 'https://public@sentry.example.com/1'
-            SITE_URL: https://track-stg.warpdriven.ai
-            SECRET_KEY: b0020abffdc51b3c2907589a97aff15dba856f9ee11483b1e2e76250
+#    plugins:
+#        extends:
+#            file: docker-compose.base.yml
+#            service: plugins
+#        image: posthog/posthog:latest
+#        environment:
+#            SENTRY_DSN: 'https://public@sentry.example.com/1'
+#            SITE_URL: https://track-stg.warpdriven.ai
+#            SECRET_KEY: b0020abffdc51b3c2907589a97aff15dba856f9ee11483b1e2e76250
 
     caddy:
         image: caddy:2.6.1
@@ -87,62 +133,84 @@ services:
             - ./Caddyfile:/etc/caddy/Caddyfile
         depends_on:
             - web
-    object_storage:
-        extends:
-            file: docker-compose.base.yml
-            service: object_storage
-        restart: on-failure
-        volumes:
-            - object_storage:/data
 
     asyncmigrationscheck:
-        extends:
-            file: docker-compose.base.yml
-            service: asyncmigrationscheck
+        <<: *worker
+        command: python manage.py run_async_migrations --check
+        restart: 'no'
+        deploy:
+          replicas: 0
         image: posthog/posthog:latest
         environment:
-            SENTRY_DSN: 'https://public@sentry.example.com/1'
-            SITE_URL: https://track-stg.warpdriven.ai
-            SECRET_KEY: b0020abffdc51b3c2907589a97aff15dba856f9ee11483b1e2e76250
-            SKIP_ASYNC_MIGRATIONS_SETUP: 0
+          SENTRY_DSN: 'https://public@sentry.example.com/1'
+          SITE_URL: https://track-stg.warpdriven.ai
+          SECRET_KEY: b0020abffdc51b3c2907589a97aff15dba856f9ee11483b1e2e76250
+          SKIP_ASYNC_MIGRATIONS_SETUP: 0
 
     # Temporal containers
     temporal:
-        extends:
-            file: docker-compose.base.yml
-            service: temporal
-        environment:
-            - ENABLE_ES=false
-        ports:
-            - 7233:7233
-        volumes:
-            - ./posthog/docker/temporal/dynamicconfig:/etc/temporal/config/dynamicconfig
-    temporal-admin-tools:
-        extends:
-            file: docker-compose.base.yml
-            service: temporal-admin-tools
-    temporal-ui:
-        extends:
-            file: docker-compose.base.yml
-            service: temporal-ui
-        ports:
-            - 8081:8080
-    temporal-django-worker:
-        command: /compose/temporal-django-worker
-        extends:
-            file: docker-compose.base.yml
-            service: temporal-django-worker
-        volumes:
-            - ./compose:/compose
-        image: posthog/posthog:latest
-        environment:
-            SENTRY_DSN: 'https://public@sentry.example.com/1'
-            SITE_URL: https://track-stg.warpdriven.ai
+      depends_on:
+        db:
+          condition: service_healthy
 
-volumes:
-    zookeeper-data:
-    zookeeper-datalog:
-    zookeeper-logs:
-    object_storage:
-    postgres-data:
-    clickhouse-data:
+      environment:
+        - DB=postgresql
+        - DB_PORT=5432
+        - POSTGRES_USER=posthog
+        - POSTGRES_PWD=posthog
+        - POSTGRES_SEEDS=db
+        - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+        - ENABLE_ES=true
+        - ES_SEEDS=elasticsearch
+        - ES_VERSION=v7
+        - ENABLE_ES=false
+      image: temporalio/auto-setup:1.20.0
+      ports:
+        - 7233:7233
+      labels:
+        kompose.volume.type: configMap
+      volumes:
+        - ../../docker/temporal/dynamicconfig:/etc/temporal/config/dynamicconfig
+    temporal-admin-tools:
+        depends_on:
+          - temporal
+        environment:
+          - TEMPORAL_CLI_ADDRESS=temporal:7233
+        image: temporalio/admin-tools:1.20.0
+        stdin_open: true
+        tty: true
+    temporal-ui:
+        depends_on:
+          - temporal
+        environment:
+          - TEMPORAL_ADDRESS=temporal:7233
+          - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+        image: temporalio/ui:2.10.3
+        ports:
+          - 8081:8080
+    temporal-django-worker:
+      <<: *worker
+      command: /compose/temporal-django-worker
+      restart: on-failure
+      volumes:
+          - ./compose:/compose
+      image: posthog/posthog:latest
+      environment:
+        TEMPORAL_HOST: temporal
+        SENTRY_DSN: 'https://public@sentry.example.com/1'
+        SITE_URL: https://track-stg.warpdriven.ai
+      depends_on:
+        - db
+        - redis
+        - clickhouse
+        - kafka
+        - object_storage
+        - temporal
+#
+#volumes:
+#    zookeeper-data:
+#    zookeeper-datalog:
+#    zookeeper-logs:
+#    object_storage:
+#    postgres-data:
+#    clickhouse-data:
