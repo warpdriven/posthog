@@ -88,6 +88,7 @@ services:
           SENTRY_DSN: 'https://public@sentry.example.com/1'
           SITE_URL: https://track-stg.warpdriven.ai
           SECRET_KEY: b0020abffdc51b3c2907589a97aff15dba856f9ee11483b1e2e76250
+          TRUSTED_PROXIES: '172.18.0.10'
         image: posthog/posthog:latest
 
     object_storage:
