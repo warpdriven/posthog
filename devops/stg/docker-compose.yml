@@ -212,6 +212,20 @@ services:
           - ./compose:/compose
       image: posthog/posthog:latest
       environment:
+        DISABLE_SECURE_SSL_REDIRECT: 'true'
+        IS_BEHIND_PROXY: 'true'
+        DATABASE_URL: 'postgres://posthog:posthog@db:5432/posthog'
+        CLICKHOUSE_HOST: 'clickhouse'
+        CLICKHOUSE_DATABASE: 'posthog'
+        CLICKHOUSE_SECURE: 'false'
+        CLICKHOUSE_VERIFY: 'false'
+        KAFKA_URL: 'kafka://kafka'
+        SESSION_RECORDING_KAFKA_URL: 'kafka://kafka'
+        REDIS_URL: 'redis://redis:6379/'
+        PGHOST: db
+        PGUSER: posthog
+        PGPASSWORD: posthog
+        DEPLOYMENT: hobby
         SECRET_KEY: b0020abffdc51b3c2907589a97aff15dba856f9ee11483b1e2e76250
         TEMPORAL_HOST: temporal
         SENTRY_DSN: 'https://public@sentry.example.com/1'
