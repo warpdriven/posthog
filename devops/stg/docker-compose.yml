@@ -62,34 +62,35 @@ services:
             - /data_lake/posthog/docker/clickhouse/users.xml:/etc/clickhouse-server/users.xml
             - /data_lake/clickhouse-data:/var/lib/clickhouse
     worker: &worker
-        command: ./bin/docker-worker-celery --with-scheduler
-        restart: on-failure
-        depends_on:
-          - db
-          - redis
-          - clickhouse
-          - kafka
-          - object_storage
-        environment:
-          DISABLE_SECURE_SSL_REDIRECT: 'true'
-          IS_BEHIND_PROXY: 'true'
-          DATABASE_URL: 'postgres://posthog:posthog@db:5432/posthog'
-          CLICKHOUSE_HOST: 'clickhouse'
-          CLICKHOUSE_DATABASE: 'posthog'
-          CLICKHOUSE_SECURE: 'false'
-          CLICKHOUSE_VERIFY: 'false'
-          KAFKA_URL: 'kafka://kafka'
-          SESSION_RECORDING_KAFKA_URL: 'kafka://kafka'
-          REDIS_URL: 'redis://redis:6379/'
-          PGHOST: db
-          PGUSER: posthog
-          PGPASSWORD: posthog
-          DEPLOYMENT: hobby
-          SENTRY_DSN: 'https://public@sentry.example.com/1'
-          SITE_URL: https://track-stg.warpdriven.ai
-          SECRET_KEY: b0020abffdc51b3c2907589a97aff15dba856f9ee11483b1e2e76250
-          TRUSTED_PROXIES: '172.18.0.10'
-        image: posthog/posthog:latest
+      command: ./bin/docker-worker-celery --with-scheduler
+      restart: on-failure
+      depends_on:
+        - db
+        - redis
+        - clickhouse
+        - kafka
+        - object_storage
+      environment:
+        DISABLE_SECURE_SSL_REDIRECT: 'true'
+        IS_BEHIND_PROXY: 'true'
+        DATABASE_URL: 'postgres://posthog:posthog@db:5432/posthog'
+        CLICKHOUSE_HOST: 'clickhouse'
+        CLICKHOUSE_DATABASE: 'posthog'
+        CLICKHOUSE_SECURE: 'false'
+        CLICKHOUSE_VERIFY: 'false'
+        KAFKA_URL: 'kafka://kafka'
+        SESSION_RECORDING_KAFKA_URL: 'kafka://kafka'
+        REDIS_URL: 'redis://redis:6379/'
+        PGHOST: db
+        PGUSER: posthog
+        PGPASSWORD: posthog
+        DEPLOYMENT: hobby
+        SENTRY_DSN: 'https://public@sentry.example.com/1'
+        SITE_URL: https://track-stg.warpdriven.ai
+        SECRET_KEY: b0020abffdc51b3c2907589a97aff15dba856f9ee11483b1e2e76250
+#          TRUSTED_PROXIES: '172.18.0.10'
+        TRUST_ALL_PROXIES: true
+      image: posthog/posthog:latest
 
     object_storage:
       image: minio/minio:RELEASE.2022-06-25T15-50-16Z
@@ -111,9 +112,23 @@ services:
             - ./compose:/compose
         image: posthog/posthog:latest
         environment:
-            SENTRY_DSN: 'https://public@sentry.example.com/1'
-            SITE_URL: https://track-stg.warpdriven.ai
-            SECRET_KEY: b0020abffdc51b3c2907589a97aff15dba856f9ee11483b1e2e76250
+          DISABLE_SECURE_SSL_REDIRECT: 'true'
+          IS_BEHIND_PROXY: 'true'
+          DATABASE_URL: 'postgres://posthog:posthog@db:5432/posthog'
+          CLICKHOUSE_HOST: 'clickhouse'
+          CLICKHOUSE_DATABASE: 'posthog'
+          CLICKHOUSE_SECURE: 'false'
+          CLICKHOUSE_VERIFY: 'false'
+          KAFKA_URL: 'kafka://kafka'
+          SESSION_RECORDING_KAFKA_URL: 'kafka://kafka'
+          REDIS_URL: 'redis://redis:6379/'
+          PGHOST: db
+          PGUSER: posthog
+          PGPASSWORD: posthog
+          DEPLOYMENT: hobby
+          SENTRY_DSN: 'https://public@sentry.example.com/1'
+          SITE_URL: https://track-stg.warpdriven.ai
+          SECRET_KEY: b0020abffdc51b3c2907589a97aff15dba856f9ee11483b1e2e76250
 #    plugins:
 #        extends:
 #            file: docker-compose.base.yml
