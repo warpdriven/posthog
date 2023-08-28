@@ -47,7 +47,7 @@ function IdPart({
     const htmlElementsSelector = clsx('decoration-primary-highlight', !readonly && 'cursor-pointer SelectableElement')
     const isSelected = !readonly && !!selectedParts.id
 
-    return !!id ? (
+    return id ? (
         <span
             onClick={(e) => {
                 e.stopPropagation()
@@ -183,7 +183,7 @@ export function SelectableElement({
         <pre
             className={clsx(
                 'p-0 m-0 rounded whitespace-pre-wrap break-all text-white text-sm',
-                isDeepestChild && highlight ? 'bg-primary-light' : 'bg-transparent'
+                isDeepestChild && highlight ? 'bg-brand-red' : 'bg-transparent'
             )}
         >
             {indent}

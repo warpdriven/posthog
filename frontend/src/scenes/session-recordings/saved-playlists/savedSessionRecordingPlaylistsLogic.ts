@@ -61,7 +61,7 @@ export const savedSessionRecordingPlaylistsLogic = kea<savedSessionRecordingPlay
         deletePlaylist: (playlist: SessionRecordingPlaylistType) => ({ playlist }),
         duplicatePlaylist: (playlist: SessionRecordingPlaylistType) => ({ playlist }),
     })),
-    reducers(({}) => ({
+    reducers(() => ({
         filters: [
             DEFAULT_PLAYLIST_FILTERS as SavedSessionRecordingPlaylistsFilters | Record<string, any>,
             {
@@ -72,6 +72,14 @@ export const savedSessionRecordingPlaylistsLogic = kea<savedSessionRecordingPlay
                         // Reset page on filter change EXCEPT if it's page that's being updated
                         ...('page' in filters ? {} : { page: 1 }),
                     }),
+            },
+        ],
+        loadPlaylistsFailed: [
+            false,
+            {
+                loadPlaylists: () => false,
+                loadPlaylistsSuccess: () => false,
+                loadPlaylistsFailure: () => true,
             },
         ],
     })),

@@ -29,7 +29,7 @@ export interface LemonButtonPropsBase
     children?: React.ReactNode
     type?: 'primary' | 'secondary' | 'tertiary'
     /** Button color scheme. */
-    status?: 'primary' | 'danger' | 'primary-alt' | 'muted' | 'muted-alt' | 'stealth' | 'default-dark'
+    status?: 'primary' | 'danger' | 'primary-alt' | 'muted' | 'muted-alt' | 'stealth'
     /** Whether hover style should be applied, signaling that the button is held active in some way. */
     active?: boolean
     /** URL to link to. */
@@ -73,7 +73,7 @@ export interface LemonButtonProps extends LemonButtonPropsBase {
 }
 
 /** Styled button. */
-export const LemonButton: React.FunctionComponent<LemonButtonProps & React.RefAttributes<HTMLElement>> =
+export const LemonButton: React.FunctionComponent<LemonButtonProps & React.RefAttributes<HTMLButtonElement>> =
     React.forwardRef(
         (
             {
@@ -98,6 +98,7 @@ export const LemonButton: React.FunctionComponent<LemonButtonProps & React.RefAt
                 targetBlank,
                 disableClientSideRouting,
                 getTooltipPopupContainer,
+                onClick,
                 ...buttonProps
             },
             ref
@@ -118,7 +119,8 @@ export const LemonButton: React.FunctionComponent<LemonButtonProps & React.RefAt
                 }
             }
             if (loading) {
-                icon = <Spinner monocolor />
+                icon = <Spinner textColored />
+                disabled = true // Cannot interact with a loading button
             }
 
             let tooltipContent: TooltipProps['title']
@@ -139,8 +141,13 @@ export const LemonButton: React.FunctionComponent<LemonButtonProps & React.RefAt
             }
 
             const ButtonComponent = to ? Link : 'button'
-
-            const linkOnlyProps = to ? { disableClientSideRouting } : {}
+            const linkDependentProps = to
+                ? {
+                      disableClientSideRouting,
+                      target: targetBlank ? '_blank' : undefined,
+                      to: !disabled ? to : undefined,
+                  }
+                : { type: htmlType }
 
             if (ButtonComponent === 'button' && !buttonProps['aria-label'] && typeof tooltip === 'string') {
                 buttonProps['aria-label'] = tooltip
@@ -148,15 +155,14 @@ export const LemonButton: React.FunctionComponent<LemonButtonProps & React.RefAt
 
             let workingButton = (
                 <ButtonComponent
-                    type={htmlType}
                     ref={ref as any}
                     className={clsx(
                         'LemonButton',
                         `LemonButton--${type}`,
                         `LemonButton--status-${status}`,
+                        loading && `LemonButton--loading`,
                         noPadding && `LemonButton--no-padding`,
                         size && `LemonButton--${size}`,
-                        disabled && 'LemonButton--disabled',
                         active && 'LemonButton--active',
                         fullWidth && 'LemonButton--full-width',
                         center && 'LemonButton--centered',
@@ -165,10 +171,11 @@ export const LemonButton: React.FunctionComponent<LemonButtonProps & React.RefAt
                         !!sideIcon && `LemonButton--has-side-icon`,
                         className
                     )}
-                    disabled={disabled || loading}
-                    to={disabled ? undefined : to}
-                    target={targetBlank ? '_blank' : undefined}
-                    {...linkOnlyProps}
+                    onClick={!disabled ? onClick : undefined}
+                    // We are using the ARIA disabled instead of native HTML because of this:
+                    // https://css-tricks.com/making-disabled-buttons-more-inclusive/
+                    aria-disabled={disabled}
+                    {...linkDependentProps}
                     {...buttonProps}
                 >
                     {icon ? <span className="LemonButton__icon">{icon}</span> : null}
@@ -197,7 +204,7 @@ LemonButton.displayName = 'LemonButton'
 
 export type SideAction = Pick<
     LemonButtonProps,
-    'onClick' | 'to' | 'disabled' | 'icon' | 'type' | 'tooltip' | 'data-attr' | 'aria-label' | 'status'
+    'onClick' | 'to' | 'disabled' | 'icon' | 'type' | 'tooltip' | 'data-attr' | 'aria-label' | 'status' | 'targetBlank'
 > & {
     dropdown?: LemonButtonDropdown
     /**
@@ -218,7 +225,7 @@ export interface LemonButtonWithSideActionProps extends LemonButtonPropsBase {
  * We can't use `LemonRow`'s `sideIcon` prop because putting `onClick` on it clashes with the parent`s `onClick`.
  */
 export const LemonButtonWithSideAction: React.FunctionComponent<
-    LemonButtonWithSideActionProps & React.RefAttributes<HTMLElement>
+    LemonButtonWithSideActionProps & React.RefAttributes<HTMLButtonElement>
 > = React.forwardRef(({ sideAction, children, ...buttonProps }, ref) => {
     const { dropdown: sideDropdown, divider = !buttonProps.fullWidth, ...sideActionRest } = sideAction
     const SideComponent = sideDropdown ? LemonButtonWithDropdown : LemonButton

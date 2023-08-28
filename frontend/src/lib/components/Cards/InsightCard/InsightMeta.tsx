@@ -15,13 +15,11 @@ import { eventUsageLogic } from 'lib/utils/eventUsageLogic'
 import { groupsModel } from '~/models/groupsModel'
 import { cohortsModel } from '~/models/cohortsModel'
 import { mathsLogic } from 'scenes/trends/mathsLogic'
-import { UserActivityIndicator } from '../../UserActivityIndicator/UserActivityIndicator'
 import { ExportButton } from 'lib/components/ExportButton/ExportButton'
 import { CardMeta } from 'lib/components/Cards/CardMeta'
-import { DashboardPrivilegeLevel, FEATURE_FLAGS } from 'lib/constants'
+import { DashboardPrivilegeLevel } from 'lib/constants'
 import { PieChartFilled } from '@ant-design/icons'
 import { Tooltip } from 'lib/lemon-ui/Tooltip'
-import { featureFlagLogic } from 'lib/logic/featureFlagLogic'
 import { TopHeading } from 'lib/components/Cards/InsightCard/TopHeading'
 import { summarizeInsight } from 'scenes/insights/summarizeInsight'
 import { InsightCardProps } from './InsightCard'
@@ -77,7 +75,6 @@ export function InsightMeta({
     const { cohortsById } = useValues(cohortsModel)
     const { nameSortedDashboards } = useValues(dashboardsModel)
     const { mathDefinitions } = useValues(mathsLogic)
-    const { featureFlags } = useValues(featureFlagLogic)
 
     const otherDashboards = nameSortedDashboards.filter((d) => !dashboards?.includes(d.id))
     const editable = insight.effective_privilege_level >= DashboardPrivilegeLevel.CanEdit
@@ -89,7 +86,6 @@ export function InsightMeta({
         aggregationLabel,
         cohortsById,
         mathDefinitions,
-        isUsingDashboardQueries: !!featureFlags[FEATURE_FLAGS.HOGQL],
     })
 
     return (
@@ -112,7 +108,6 @@ export function InsightMeta({
 
                     {!!insight.description && <div className="CardMeta__description">{insight.description}</div>}
                     {insight.tags && insight.tags.length > 0 && <ObjectTags tags={insight.tags} staticOnly />}
-                    <UserActivityIndicator at={insight.last_modified_at} by={insight.last_modified_by} />
                 </>
             }
             metaDetails={<InsightDetails insight={insight} />}
@@ -223,22 +218,24 @@ export function InsightMeta({
                     >
                         Duplicate
                     </LemonButton>
-                    <LemonDivider />
                     {exporterResourceParams ? (
-                        <ExportButton
-                            fullWidth
-                            items={[
-                                {
-                                    export_format: ExporterFormat.PNG,
-                                    insight: insight.id,
-                                    dashboard: insightProps.dashboardId,
-                                },
-                                {
-                                    export_format: ExporterFormat.CSV,
-                                    export_context: exporterResourceParams,
-                                },
-                            ]}
-                        />
+                        <>
+                            <LemonDivider />
+                            <ExportButton
+                                fullWidth
+                                items={[
+                                    {
+                                        export_format: ExporterFormat.PNG,
+                                        insight: insight.id,
+                                        dashboard: insightProps.dashboardId,
+                                    },
+                                    {
+                                        export_format: ExporterFormat.CSV,
+                                        export_context: exporterResourceParams,
+                                    },
+                                ]}
+                            />
+                        </>
                     ) : null}
                     {moreButtons && (
                         <>

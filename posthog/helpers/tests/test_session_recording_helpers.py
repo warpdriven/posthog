@@ -1,4 +1,5 @@
 import json
+import math
 import random
 import string
 from datetime import datetime
@@ -370,6 +371,10 @@ def test_get_events_summary_from_snapshot_data():
             "timestamp": "it was about a hundred years ago, that I remember this happening",
             "data": {"source": 3},
         },
+        # we can see malformed packets
+        {"data": {}},
+        {},
+        None,
     ]
 
     assert get_events_summary_from_snapshot_data(snapshot_events) == [
@@ -730,7 +735,8 @@ def test_new_ingestion_groups_using_snapshot_bytes_if_possible(raw_snapshot_even
 
     assert [event["properties"]["$snapshot_bytes"] for event in events] == [106, 1072, 159]
 
-    assert list(mock_capture_flow(events, max_size_bytes=106 + 1072 + 50)[1]) == [
+    space_with_headroom = math.ceil((106 + 1072 + 50) * 1.05)
+    assert list(mock_capture_flow(events, max_size_bytes=space_with_headroom)[1]) == [
         {
             "event": "$snapshot_items",
             "properties": {

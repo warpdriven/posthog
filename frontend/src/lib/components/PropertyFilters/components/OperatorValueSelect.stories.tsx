@@ -1,22 +1,21 @@
-import { ComponentMeta } from '@storybook/react'
+import { Meta } from '@storybook/react'
 import {
     OperatorValueSelect,
     OperatorValueSelectProps,
 } from 'lib/components/PropertyFilters/components/OperatorValueSelect'
 import { PropertyDefinition, PropertyType } from '~/types'
 
-export default {
+const meta: Meta<typeof OperatorValueSelect> = {
     title: 'Filters/PropertyFilters/OperatorValueSelect',
-    Component: OperatorValueSelect,
-} as ComponentMeta<typeof OperatorValueSelect>
+    component: OperatorValueSelect,
+}
+export default meta
 
 const makePropertyDefinition = (name: string, propertyType: PropertyType | undefined): PropertyDefinition => ({
     id: name,
     name: name,
     property_type: propertyType,
     description: '',
-    volume_30_day: null,
-    query_usage_30_day: null,
 })
 
 const props = (type?: PropertyType | undefined): OperatorValueSelectProps => ({

@@ -2,7 +2,7 @@ import './ToolbarButton.scss'
 
 import { useRef, useEffect } from 'react'
 import { useActions, useValues } from 'kea'
-import { HogLogo } from '~/toolbar/assets/HogLogo'
+import { Logomark } from '~/toolbar/assets/Logomark'
 import { Circle } from '~/toolbar/button/Circle'
 import { toolbarButtonLogic } from '~/toolbar/button/toolbarButtonLogic'
 import { heatmapLogic } from '~/toolbar/elements/heatmapLogic'
@@ -115,7 +115,14 @@ export function ToolbarButton(): JSX.Element {
             rootNode
             width={62}
             className="floating-toolbar-button"
-            content={!hedgehogMode ? <HogLogo style={{ width: 45, cursor: 'pointer' }} /> : <></>}
+            content={
+                !hedgehogMode ? (
+                    // eslint-disable-next-line react/forbid-dom-props
+                    <div style={{ width: 45, display: 'flex' }}>
+                        <Logomark />
+                    </div>
+                ) : undefined
+            }
             {...clickEvents}
             onMouseOver={isAuthenticated ? undefined : () => setExtensionPercentage(1)}
             style={{
@@ -124,6 +131,7 @@ export function ToolbarButton(): JSX.Element {
                 marginTop: -23,
                 pointerEvents: hedgehogMode ? 'none' : undefined,
                 display: hedgehogMode ? 'none' : 'flex',
+                cursor: 'pointer',
             }}
             zIndex={3}
         >
@@ -149,7 +157,7 @@ export function ToolbarButton(): JSX.Element {
                 extensionPercentage={extensionPercentage}
                 distance={hedgehogModeDistance}
                 rotation={hedgehogModeRotation}
-                content={<span style={{ width: 14, height: 14 }}>🦔</span>}
+                content="🦔"
                 zIndex={extensionPercentage > 0.95 ? 5 : 2}
                 onClick={() => setHedgehogMode(!hedgehogMode)}
                 style={{
@@ -193,18 +201,10 @@ export function ToolbarButton(): JSX.Element {
                             opacity: inspectExtensionPercentage > 0.8 ? (inspectExtensionPercentage - 0.8) / 0.2 : 0,
                         }}
                         content={
-                            <div style={{ position: 'relative' }}>
+                            <div className="relative">
                                 <Magnifier style={{ height: 34, paddingTop: 2 }} engaged={inspectEnabled} />
                                 {inspectEnabled && selectedElement ? (
-                                    <div
-                                        style={{
-                                            position: 'absolute',
-                                            top: 8,
-                                            left: 9,
-                                            fontSize: 13,
-                                            color: 'white',
-                                        }}
-                                    >
+                                    <div className="absolute top-2 left-2.5 text-white text-xs">
                                         <Close style={{ width: 10, height: 10 }} />
                                     </div>
                                 ) : null}
@@ -262,7 +262,7 @@ export function ToolbarButton(): JSX.Element {
                                         placement={side === 'left' ? 'right' : 'left'}
                                         getPopupContainer={getShadowRootPopoverContainer}
                                     >
-                                        <div style={{ whiteSpace: 'nowrap', textAlign: 'center' }}>{elementCount}</div>
+                                        <div className="whitespace-nowrap text-center">{elementCount}</div>
                                     </Tooltip>
                                 }
                                 zIndex={4}
@@ -323,7 +323,7 @@ export function ToolbarButton(): JSX.Element {
                                         placement={side === 'left' ? 'right' : 'left'}
                                         getPopupContainer={getShadowRootPopoverContainer}
                                     >
-                                        <div style={{ whiteSpace: 'nowrap', textAlign: 'center' }}>{actionCount}</div>
+                                        <div className="whitespace-nowrap text-center">{actionCount}</div>
                                     </Tooltip>
                                 }
                                 zIndex={4}

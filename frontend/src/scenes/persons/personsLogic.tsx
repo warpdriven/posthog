@@ -16,12 +16,12 @@ import { eventUsageLogic } from 'lib/utils/eventUsageLogic'
 import { urls } from 'scenes/urls'
 import { teamLogic } from 'scenes/teamLogic'
 import { convertPropertyGroupToProperties, toParams } from 'lib/utils'
-import { asDisplay } from 'scenes/persons/PersonHeader'
 import { isValidPropertyFilter } from 'lib/components/PropertyFilters/utils'
 import { lemonToast } from 'lib/lemon-ui/lemonToast'
 import { TriggerExportProps } from 'lib/components/ExportButton/exporter'
 import { featureFlagLogic } from 'lib/logic/featureFlagLogic'
 import { FEATURE_FLAGS } from 'lib/constants'
+import { asDisplay } from './person-utils'
 
 export interface PersonsLogicProps {
     cohort?: number | 'new'
@@ -55,6 +55,7 @@ export const personsLogic = kea<personsLogicType>({
         deleteProperty: (key: string) => ({ key }),
         navigateToCohort: (cohort: CohortType) => ({ cohort }),
         navigateToTab: (tab: PersonsTabType) => ({ tab }),
+        setActiveTab: (tab: PersonsTabType) => ({ tab }),
         setSplitMergeModalShown: (shown: boolean) => ({ shown }),
         setDistinctId: (distinctId: string) => ({ distinctId }),
     },
@@ -94,6 +95,7 @@ export const personsLogic = kea<personsLogicType>({
             null as PersonsTabType | null,
             {
                 navigateToTab: (_, { tab }) => tab,
+                setActiveTab: (_, { tab }) => tab,
             },
         ],
         splitMergeModalShown: [
@@ -127,7 +129,7 @@ export const personsLogic = kea<personsLogicType>({
         apiDocsURL: [
             () => [(_, props) => props.cohort],
             (cohort: PersonsLogicProps['cohort']) =>
-                !!cohort
+                cohort
                     ? 'https://posthog.com/docs/api/cohorts#get-api-projects-project_id-cohorts-id-persons'
                     : 'https://posthog.com/docs/api/persons',
         ],
@@ -172,6 +174,10 @@ export const personsLogic = kea<personsLogicType>({
             ],
         ],
         urlId: [() => [(_, props) => props.urlId], (urlId) => urlId],
+        showCustomerSuccessDashboards: [
+            (s) => [s.featureFlags],
+            (featureFlags) => featureFlags[FEATURE_FLAGS.CS_DASHBOARDS],
+        ],
     }),
     listeners: ({ actions, values }) => ({
         editProperty: async ({ key, newValue }) => {
@@ -305,11 +311,7 @@ export const personsLogic = kea<personsLogicType>({
         },
         navigateToTab: () => {
             if (props.syncWithUrl && router.values.location.pathname.indexOf('/person') > -1) {
-                const searchParams = { ...router.values.searchParams }
-
-                if (values.activeTab !== PersonsTabType.HISTORY) {
-                    delete searchParams['page']
-                }
+                const searchParams = {}
 
                 return [
                     router.values.location.pathname,
@@ -323,26 +325,16 @@ export const personsLogic = kea<personsLogicType>({
         },
     }),
     urlToAction: ({ actions, values, props }) => ({
-        '/persons': ({}, searchParams) => {
-            const featureDataExploration = values.featureFlags[FEATURE_FLAGS.HOGQL]
-            if (props.syncWithUrl && !featureDataExploration) {
-                actions.setListFilters(searchParams)
-                if (!values.persons.results.length && !values.personsLoading) {
-                    // Initial load
-                    actions.loadPersons()
-                }
-            }
-        },
         '/person/*': ({ _: rawPersonDistinctId }, { sessionRecordingId }, { activeTab }) => {
             if (props.syncWithUrl) {
-                if (sessionRecordingId) {
+                if (sessionRecordingId && values.activeTab !== PersonsTabType.SESSION_RECORDINGS) {
                     actions.navigateToTab(PersonsTabType.SESSION_RECORDINGS)
                 } else if (activeTab && values.activeTab !== activeTab) {
                     actions.navigateToTab(activeTab as PersonsTabType)
                 }
 
-                if (!activeTab && values.activeTab && values.activeTab !== PersonsTabType.PROPERTIES) {
-                    actions.navigateToTab(PersonsTabType.PROPERTIES)
+                if (!activeTab) {
+                    actions.setActiveTab(PersonsTabType.PROPERTIES)
                 }
 
                 if (rawPersonDistinctId) {

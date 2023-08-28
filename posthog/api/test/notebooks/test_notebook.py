@@ -6,12 +6,11 @@ from parameterized import parameterized
 from rest_framework import status
 
 from posthog.models import Team, Organization
-from posthog.models.notebook.notebook import Notebook
 from posthog.models.user import User
-from posthog.test.base import APIBaseTest
+from posthog.test.base import APIBaseTest, QueryMatchingTest, snapshot_postgres_queries
 
 
-class TestNotebooks(APIBaseTest):
+class TestNotebooks(APIBaseTest, QueryMatchingTest):
     def created_activity(self, item_id: str, short_id: str) -> Dict:
         return {
             "activity": "created",
@@ -100,6 +99,7 @@ class TestNotebooks(APIBaseTest):
         assert response.status_code == status.HTTP_200_OK
         assert response.json()["short_id"] == create_response.json()["short_id"]
 
+    @snapshot_postgres_queries
     def test_updates_notebook(self) -> None:
         response = self.client.post(f"/api/projects/{self.team.id}/notebooks/", data={})
         assert response.status_code == status.HTTP_201_CREATED
@@ -110,7 +110,7 @@ class TestNotebooks(APIBaseTest):
         with freeze_time("2022-01-02"):
             response = self.client.patch(
                 f"/api/projects/{self.team.id}/notebooks/{short_id}",
-                {"content": {"some": "updated content"}, "version": response_json["version"]},
+                {"content": {"some": "updated content"}, "version": response_json["version"], "title": "New title"},
             )
 
         assert response.json()["short_id"] == short_id
@@ -127,6 +127,13 @@ class TestNotebooks(APIBaseTest):
                         "changes": [
                             {
                                 "action": "created",
+                                "after": "New title",
+                                "before": None,
+                                "field": "title",
+                                "type": "Notebook",
+                            },
+                            {
+                                "action": "created",
                                 "after": {"some": "updated content"},
                                 "before": None,
                                 "field": "content",
@@ -140,7 +147,7 @@ class TestNotebooks(APIBaseTest):
                                 "type": "Notebook",
                             },
                         ],
-                        "name": None,
+                        "name": "New title",
                         "short_id": response.json()["short_id"],
                         "trigger": None,
                         "type": None,
@@ -162,24 +169,6 @@ class TestNotebooks(APIBaseTest):
         # out of the box this is accepted _and_ ignored 🤷‍♀️
         assert response.status_code == status.HTTP_200_OK
         assert response.json()["short_id"] == notebook["short_id"]
-
-    def test_filters_based_on_params(self) -> None:
-        other_user = User.objects.create_and_join(self.organization, "other@posthog.com", "password")
-        notebook_one = Notebook.objects.create(team=self.team, created_by=self.user)
-        notebook_two = Notebook.objects.create(team=self.team, created_by=self.user)
-        other_users_notebook = Notebook.objects.create(team=self.team, created_by=other_user)
-
-        results = self.client.get(
-            f"/api/projects/{self.team.id}/notebooks?user=true",
-        ).json()["results"]
-
-        assert [r["short_id"] for r in results] == [notebook_two.short_id, notebook_one.short_id]
-
-        results = self.client.get(
-            f"/api/projects/{self.team.id}/notebooks?created_by={other_user.id}",
-        ).json()["results"]
-
-        assert [r["short_id"] for r in results] == [other_users_notebook.short_id]
 
     def test_listing_does_not_leak_between_teams(self) -> None:
         another_team = Team.objects.create(organization=self.organization)

@@ -1,59 +1,35 @@
 import { useValues } from 'kea'
 import { useMemo } from 'react'
-import { funnelLogic } from '../funnelLogic'
 import './FunnelBarChart.scss'
-import { ChartParams, FunnelStepWithConversionMetrics } from '~/types'
+import { ChartParams } from '~/types'
 import clsx from 'clsx'
 import { useScrollable } from 'lib/hooks/useScrollable'
 import { useResizeObserver } from 'lib/hooks/useResizeObserver'
 import { useFunnelTooltip } from '../useFunnelTooltip'
-import { StepLegend, StepLegendDataExploration } from './StepLegend'
+import { StepLegend } from './StepLegend'
 import { StepBars } from './StepBars'
 import { StepBarLabels } from './StepBarLabels'
 import { insightLogic } from 'scenes/insights/insightLogic'
 import { funnelDataLogic } from '../funnelDataLogic'
-
-export function FunnelBarChartDataExploration(props: ChartParams): JSX.Element {
-    const { insightProps } = useValues(insightLogic)
-    const { visibleStepsWithConversionMetrics, canOpenPersonModal } = useValues(funnelDataLogic(insightProps))
-    return (
-        <FunnelBarChartComponent
-            isUsingDataExploration
-            visibleStepsWithConversionMetrics={visibleStepsWithConversionMetrics}
-            {...props}
-            showPersonsModal={canOpenPersonModal && props.showPersonsModal}
-        />
-    )
-}
-
-export function FunnelBarChart(props: ChartParams): JSX.Element {
-    const { visibleStepsWithConversionMetrics, canOpenPersonModal } = useValues(funnelLogic)
-    return (
-        <FunnelBarChartComponent
-            visibleStepsWithConversionMetrics={visibleStepsWithConversionMetrics}
-            {...props}
-            showPersonsModal={canOpenPersonModal && props.showPersonsModal}
-        />
-    )
-}
+import { funnelPersonsModalLogic } from '../funnelPersonsModalLogic'
 
 interface FunnelBarChartCSSProperties extends React.CSSProperties {
     '--bar-width': string
     '--bar-row-height': string
 }
 
-type FunnelBarChartComponent = {
-    visibleStepsWithConversionMetrics: FunnelStepWithConversionMetrics[]
-    isUsingDataExploration?: boolean
-} & ChartParams
+export function FunnelBarChart({
+    inCardView,
+    showPersonsModal: showPersonsModalProp = true,
+}: ChartParams): JSX.Element {
+    const { insightProps } = useValues(insightLogic)
+    const { visibleStepsWithConversionMetrics } = useValues(funnelDataLogic(insightProps))
+    const { canOpenPersonModal } = useValues(funnelPersonsModalLogic(insightProps))
 
-export function FunnelBarChartComponent({
-    showPersonsModal = true,
-    isUsingDataExploration = false,
-    visibleStepsWithConversionMetrics,
-}: FunnelBarChartComponent): JSX.Element {
-    const [scrollRef, scrollableClassNames] = useScrollable()
+    const [scrollRef, [isScrollableLeft, isScrollableRight]] = useScrollable()
     const { height } = useResizeObserver({ ref: scrollRef })
+
+    const showPersonsModal = canOpenPersonModal && showPersonsModalProp
 
     const seriesCount = visibleStepsWithConversionMetrics[0]?.nested_breakdown?.length ?? 0
     const barWidthPx =
@@ -119,21 +95,12 @@ export function FunnelBarChartComponent({
                         <td />
                         {visibleStepsWithConversionMetrics.map((step, stepIndex) => (
                             <td key={stepIndex}>
-                                {isUsingDataExploration ? (
-                                    <StepLegendDataExploration
-                                        step={step}
-                                        stepIndex={stepIndex}
-                                        showTime={showTime}
-                                        showPersonsModal={showPersonsModal}
-                                    />
-                                ) : (
-                                    <StepLegend
-                                        step={step}
-                                        stepIndex={stepIndex}
-                                        showTime={showTime}
-                                        showPersonsModal={showPersonsModal}
-                                    />
-                                )}
+                                <StepLegend
+                                    step={step}
+                                    stepIndex={stepIndex}
+                                    showTime={showTime}
+                                    showPersonsModal={showPersonsModal}
+                                />
                             </td>
                         ))}
                     </tr>
@@ -142,8 +109,20 @@ export function FunnelBarChartComponent({
         )
     }, [visibleStepsWithConversionMetrics, height])
 
+    // negative margin-top so that the scrollable shadow is visible on the canvas label as well
+    const scrollableAdjustmentCanvasLabel = !inCardView && '-mt-12 pt-10'
+
     return (
-        <div className={clsx('FunnelBarChart', ...scrollableClassNames)} ref={vizRef} data-attr="funnel-bar-graph">
+        <div
+            className={clsx(
+                'FunnelBarChart scrollable',
+                isScrollableLeft && 'scrollable--left',
+                isScrollableRight && 'scrollable--right',
+                scrollableAdjustmentCanvasLabel
+            )}
+            ref={vizRef}
+            data-attr="funnel-bar-graph"
+        >
             <div className="scrollable__inner" ref={scrollRef}>
                 {table}
             </div>

@@ -1,7 +1,6 @@
 import { useValues } from 'kea'
 import { allOperatorsMapping, alphabet, capitalizeFirstLetter, formatPropertyLabel } from 'lib/utils'
 import { LocalFilter, toLocalFilters } from 'scenes/insights/filters/ActionFilter/entityFilterLogic'
-import { TaxonomicBreakdownFilter } from 'scenes/insights/filters/BreakdownFilter/TaxonomicBreakdownFilter'
 import { humanizePathsEventTypes } from 'scenes/insights/utils'
 import { apiValueToMathType, MathCategory, MathDefinition, mathsLogic } from 'scenes/trends/mathsLogic'
 import { urls } from 'scenes/urls'
@@ -19,7 +18,8 @@ import { LemonDivider } from 'lib/lemon-ui/LemonDivider'
 import { Lettermark } from 'lib/lemon-ui/Lettermark'
 import { Link } from 'lib/lemon-ui/Link'
 import { ProfilePicture } from 'lib/lemon-ui/ProfilePicture'
-import { keyMapping, PropertyKeyInfo } from '../../PropertyKeyInfo'
+import { PropertyKeyInfo } from '../../PropertyKeyInfo'
+import { KEY_MAPPING } from 'lib/taxonomy'
 import { TZLabel } from '../../TZLabel'
 import { propertyDefinitionsModel } from '~/models/propertyDefinitionsModel'
 import { cohortsModel } from '~/models/cohortsModel'
@@ -31,6 +31,7 @@ import {
     isPropertyFilterWithOperator,
 } from 'lib/components/PropertyFilters/utils'
 import { filterForQuery, isInsightQueryNode } from '~/queries/utils'
+import { BreakdownTag } from 'scenes/insights/filters/BreakdownFilter/BreakdownTag'
 
 function CompactPropertyFiltersDisplay({
     groupFilter,
@@ -75,7 +76,7 @@ function CompactPropertyFiltersDisplay({
                                                 {formatPropertyLabel(
                                                     leafFilter,
                                                     cohortsById,
-                                                    keyMapping,
+                                                    KEY_MAPPING,
                                                     (s) =>
                                                         formatPropertyValueForDisplay(leafFilter.key, s)?.toString() ||
                                                         '?'
@@ -287,12 +288,22 @@ export function FiltersSummary({ filters }: { filters: Partial<FilterType> }): J
     )
 }
 
-export function BreakdownSummary({ filters }: { filters: Partial<FilterType> }): JSX.Element {
+export function BreakdownSummary({ filters }: { filters: Partial<FilterType> }): JSX.Element | null {
+    if (filters.breakdown_type == null || filters.breakdown == null) {
+        return null
+    }
+
+    const breakdownArray = Array.isArray(filters.breakdown) ? filters.breakdown : [filters.breakdown]
+
     return (
-        <div>
+        <>
             <h5>Breakdown by</h5>
-            <TaxonomicBreakdownFilter filters={filters} />
-        </div>
+            <section className="InsightDetails__breakdown">
+                {breakdownArray.map((breakdown) => (
+                    <BreakdownTag key={breakdown} breakdown={breakdown} breakdownType={filters.breakdown_type} />
+                ))}
+            </section>
+        </>
     )
 }
 
@@ -306,6 +317,7 @@ function InsightDetailsInternal({ insight }: { insight: InsightModel }, ref: Rea
         <div className="InsightDetails" ref={ref}>
             <QuerySummary filters={filters} />
             <FiltersSummary filters={filters} />
+            <BreakdownSummary filters={filters} />
             <div className="InsightDetails__footer">
                 <div>
                     <h5>Created by</h5>
@@ -314,7 +326,18 @@ function InsightDetailsInternal({ insight }: { insight: InsightModel }, ref: Rea
                         <TZLabel time={created_at} />
                     </section>
                 </div>
-                {filters.breakdown_type && <BreakdownSummary filters={filters} />}
+                <div>
+                    <h5>Last modified by</h5>
+                    <section>
+                        <ProfilePicture
+                            name={insight.last_modified_by?.first_name}
+                            email={insight.last_modified_by?.email}
+                            showName
+                            size="md"
+                        />{' '}
+                        <TZLabel time={insight.last_modified_at} />
+                    </section>
+                </div>
             </div>
         </div>
     )

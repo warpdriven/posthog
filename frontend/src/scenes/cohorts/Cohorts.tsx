@@ -21,6 +21,7 @@ import { LemonInput } from '@posthog/lemon-ui'
 import { ProductIntroduction } from 'lib/components/ProductIntroduction/ProductIntroduction'
 import { featureFlagLogic } from 'lib/logic/featureFlagLogic'
 import { FEATURE_FLAGS } from 'lib/constants'
+import { ListHog } from 'lib/components/hedgehogs'
 
 const searchCohorts = (sources: CohortType[], search: string): CohortType[] => {
     return new Fuse(sources, {
@@ -78,7 +79,7 @@ export function Cohorts(): JSX.Element {
         {
             title: 'Last calculated',
             tooltip:
-                'PostHog calculates what users belong to each cohort. This is then used when filtering on cohorts in the Trends page etc. Calculating happens every 15 minutes, or whenever a cohort is updated',
+                'PostHog calculates what users belong to each cohort. This is then used when filtering on cohorts in the Trends page etc. Calculating happens every 24 hours, or whenever a cohort is updated',
             render: function RenderCalculation(_: any, cohort: CohortType) {
                 if (cohort.is_static) {
                     return <>N/A</>
@@ -172,6 +173,7 @@ export function Cohorts(): JSX.Element {
                     isEmpty={cohorts.length == 0}
                     docsURL="https://posthog.com/docs/data/cohorts"
                     action={() => router.actions.push(urls.cohort('new'))}
+                    customHog={ListHog}
                 />
             )}
             {!shouldShowEmptyState && (

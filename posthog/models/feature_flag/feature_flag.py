@@ -1,4 +1,5 @@
 import json
+import structlog
 from typing import Dict, List, Optional, cast
 
 from django.core.cache import cache
@@ -7,15 +8,16 @@ from django.db.models.signals import post_delete, post_save, pre_delete
 from django.utils import timezone
 from sentry_sdk.api import capture_exception
 
-from posthog.constants import PropertyOperatorType
+from posthog.constants import ENRICHED_DASHBOARD_INSIGHT_IDENTIFIER, PropertyOperatorType
 from posthog.models.cohort import Cohort
 from posthog.models.experiment import Experiment
-from posthog.models.filters.mixins.utils import cached_property
 from posthog.models.property import GroupTypeIndex
 from posthog.models.property.property import Property, PropertyGroup
 from posthog.models.signals import mutable_receiver
 
 FIVE_DAYS = 60 * 60 * 24 * 5  # 5 days in seconds
+
+logger = structlog.get_logger(__name__)
 
 
 class FeatureFlag(models.Model):
@@ -40,13 +42,17 @@ class FeatureFlag(models.Model):
     performed_rollback: models.BooleanField = models.BooleanField(null=True, blank=True)
 
     ensure_experience_continuity: models.BooleanField = models.BooleanField(default=False, null=True, blank=True)
-    usage_dashboard: models.ForeignKey = models.ForeignKey("Dashboard", on_delete=models.CASCADE, null=True, blank=True)
+    usage_dashboard: models.ForeignKey = models.ForeignKey(
+        "Dashboard", on_delete=models.SET_NULL, null=True, blank=True
+    )
     analytics_dashboards: models.ManyToManyField = models.ManyToManyField(
         "Dashboard",
         through="FeatureFlagDashboards",
         related_name="analytics_dashboards",
         related_query_name="analytics_dashboard",
     )
+    # whether a feature is sending us rich analytics, like views & interactions.
+    has_enriched_analytics: models.BooleanField = models.BooleanField(default=False, null=True, blank=True)
 
     def get_analytics_metadata(self) -> Dict:
         filter_count = sum(len(condition.get("properties", [])) for condition in self.conditions)
@@ -97,6 +103,15 @@ class FeatureFlag(models.Model):
                 return variants
         return []
 
+    @property
+    def usage_dashboard_has_enriched_insights(self) -> bool:
+        if not self.usage_dashboard:
+            return False
+
+        return any(
+            ENRICHED_DASHBOARD_INSIGHT_IDENTIFIER in tile.insight.name for tile in self.usage_dashboard.tiles.all()
+        )
+
     def get_filters(self):
         if "groups" in self.filters:
             return self.filters
@@ -109,7 +124,9 @@ class FeatureFlag(models.Model):
                 ],
             }
 
-    def transform_cohort_filters_for_easy_evaluation(self):
+    def transform_cohort_filters_for_easy_evaluation(
+        self, using_database: str = "default", seen_cohorts_cache: Optional[Dict[str, Cohort]] = None
+    ):
         """
         Expands cohort filters into person property filters when possible.
         This allows for easy local flag evaluation.
@@ -121,7 +138,10 @@ class FeatureFlag(models.Model):
         # Few more edge cases are possible here, where expansion is possible, but it doesn't seem
         # worth it trying to catch all of these.
 
-        if len(self.cohort_ids) != 1:
+        if seen_cohorts_cache is None:
+            seen_cohorts_cache = {}
+
+        if len(self.get_cohort_ids(using_database=using_database, seen_cohorts_cache=seen_cohorts_cache)) != 1:
             return self.conditions
 
         cohort_group_rollout = None
@@ -129,6 +149,10 @@ class FeatureFlag(models.Model):
 
         parsed_conditions = []
         for condition in self.conditions:
+            if condition.get("variant"):
+                # variant overrides are not supported for cohort expansion.
+                return self.conditions
+
             cohort_condition = False
             props = condition.get("properties", [])
             cohort_group_rollout = condition.get("rollout_percentage")
@@ -141,7 +165,12 @@ class FeatureFlag(models.Model):
                             # We cannot expand this cohort condition if it's not the only property in its group.
                             return self.conditions
                         try:
-                            cohort = Cohort.objects.get(pk=cohort_id)
+                            parsed_cohort_id = str(cohort_id)
+                            if parsed_cohort_id in seen_cohorts_cache:
+                                cohort = seen_cohorts_cache[parsed_cohort_id]
+                            else:
+                                cohort = Cohort.objects.using(using_database).get(pk=cohort_id)
+                                seen_cohorts_cache[parsed_cohort_id] = cohort
                         except Cohort.DoesNotExist:
                             return self.conditions
             if not cohort_condition:
@@ -218,9 +247,13 @@ class FeatureFlag(models.Model):
 
         return parsed_conditions
 
-    @cached_property
-    def cohort_ids(self) -> List[int]:
+    def get_cohort_ids(
+        self, using_database: str = "default", seen_cohorts_cache: Optional[Dict[str, Cohort]] = None
+    ) -> List[int]:
         from posthog.models.cohort.util import get_dependent_cohorts
+
+        if seen_cohorts_cache is None:
+            seen_cohorts_cache = {}
 
         cohort_ids = set()
         for condition in self.conditions:
@@ -229,9 +262,22 @@ class FeatureFlag(models.Model):
                 if prop.get("type") == "cohort":
                     cohort_id = prop.get("value")
                     try:
-                        cohort: Cohort = Cohort.objects.get(pk=cohort_id)
+                        parsed_cohort_id = str(cohort_id)
+                        if parsed_cohort_id in seen_cohorts_cache:
+                            cohort: Cohort = seen_cohorts_cache[parsed_cohort_id]
+                        else:
+                            cohort = Cohort.objects.using(using_database).get(pk=cohort_id)
+                            seen_cohorts_cache[parsed_cohort_id] = cohort
+
                         cohort_ids.add(cohort.pk)
-                        cohort_ids.update([dependent_cohort.pk for dependent_cohort in get_dependent_cohorts(cohort)])
+                        cohort_ids.update(
+                            [
+                                dependent_cohort.pk
+                                for dependent_cohort in get_dependent_cohorts(
+                                    cohort, using_database=using_database, seen_cohorts_cache=seen_cohorts_cache
+                                )
+                            ]
+                        )
                     except Cohort.DoesNotExist:
                         continue
 
@@ -285,18 +331,25 @@ class FeatureFlagOverride(models.Model):
 
 
 def set_feature_flags_for_team_in_cache(
-    team_id: int, feature_flags: Optional[List[FeatureFlag]] = None
+    team_id: int, feature_flags: Optional[List[FeatureFlag]] = None, using_database: str = "default"
 ) -> List[FeatureFlag]:
     from posthog.api.feature_flag import MinimalFeatureFlagSerializer
 
     if feature_flags is not None:
         all_feature_flags = feature_flags
     else:
-        all_feature_flags = list(FeatureFlag.objects.filter(team_id=team_id, active=True, deleted=False))
+        all_feature_flags = list(
+            FeatureFlag.objects.using(using_database).filter(team_id=team_id, active=True, deleted=False)
+        )
 
     serialized_flags = MinimalFeatureFlagSerializer(all_feature_flags, many=True).data
 
-    cache.set(f"team_feature_flags_{team_id}", json.dumps(serialized_flags), FIVE_DAYS)
+    try:
+        cache.set(f"team_feature_flags_{team_id}", json.dumps(serialized_flags), FIVE_DAYS)
+    except Exception:
+        # redis is unavailable
+        logger.exception("Redis is unavailable")
+        capture_exception()
 
     return all_feature_flags
 
@@ -306,6 +359,7 @@ def get_feature_flags_for_team_in_cache(team_id: int) -> Optional[List[FeatureFl
         flag_data = cache.get(f"team_feature_flags_{team_id}")
     except Exception:
         # redis is unavailable
+        logger.exception("Redis is unavailable")
         return None
 
     if flag_data is not None:
@@ -313,6 +367,7 @@ def get_feature_flags_for_team_in_cache(team_id: int) -> Optional[List[FeatureFl
             parsed_data = json.loads(flag_data)
             return [FeatureFlag(**flag) for flag in parsed_data]
         except Exception as e:
+            logger.exception("Error parsing flags from cache")
             capture_exception(e)
             return None
 

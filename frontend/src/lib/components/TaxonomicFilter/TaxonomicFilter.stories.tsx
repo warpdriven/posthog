@@ -5,20 +5,21 @@ import { useActions, useMountedLogic } from 'kea'
 import { actionsModel } from '~/models/actionsModel'
 import { useEffect } from 'react'
 import { infiniteListLogic } from './infiniteListLogic'
-import { ComponentMeta, ComponentStoryFn } from '@storybook/react'
+import { Meta, StoryFn } from '@storybook/react'
 import { useAvailableFeatures } from '~/mocks/features'
 import { AvailableFeature } from '~/types'
 
-export default {
+const meta: Meta<typeof TaxonomicFilter> = {
     title: 'Filters/Taxonomic Filter',
     component: TaxonomicFilter,
     decorators: [taxonomicFilterMocksDecorator],
     parameters: {
         testOptions: { waitForLoadersToDisappear: '.definition-popover' },
     },
-} as ComponentMeta<typeof TaxonomicFilter>
+}
+export default meta
 
-export const EventsFree: ComponentStoryFn<typeof TaxonomicFilter> = (args) => {
+export const EventsFree: StoryFn<typeof TaxonomicFilter> = (args) => {
     useMountedLogic(actionsModel)
     const { setIndex } = useActions(
         infiniteListLogic({
@@ -33,7 +34,7 @@ export const EventsFree: ComponentStoryFn<typeof TaxonomicFilter> = (args) => {
         setIndex(1)
     }, [])
     return (
-        <div className="w-fit border rounded p-2 bg-white">
+        <div className="w-fit border rounded p-2 bg-bg-light">
             <TaxonomicFilter {...args} />
         </div>
     )
@@ -43,7 +44,7 @@ EventsFree.args = {
     taxonomicGroupTypes: [TaxonomicFilterGroupType.Events, TaxonomicFilterGroupType.Actions],
 }
 
-export const EventsPremium: ComponentStoryFn<typeof TaxonomicFilter> = (args) => {
+export const EventsPremium: StoryFn<typeof TaxonomicFilter> = (args) => {
     useAvailableFeatures([AvailableFeature.INGESTION_TAXONOMY])
     return <EventsFree {...args} />
 }
@@ -52,9 +53,34 @@ EventsPremium.args = {
     taxonomicGroupTypes: [TaxonomicFilterGroupType.Events, TaxonomicFilterGroupType.Actions],
 }
 
-export const Properties: ComponentStoryFn<typeof TaxonomicFilter> = (args) => {
+export const Actions: StoryFn<typeof TaxonomicFilter> = (args) => {
+    useMountedLogic(actionsModel)
+    const { setIndex } = useActions(
+        infiniteListLogic({
+            ...args,
+            taxonomicFilterLogicKey: args.taxonomicFilterLogicKey as string,
+            listGroupType: TaxonomicFilterGroupType.Actions,
+        })
+    )
+    useEffect(() => {
+        // Highlight the second item, as the first one is "All events", which doesn't have a definition to show
+        // - we do want to show the definition popover here too
+        setIndex(0)
+    }, [])
     return (
         <div className="w-fit border rounded p-2 bg-white">
+            <TaxonomicFilter {...args} />
+        </div>
+    )
+}
+Actions.args = {
+    taxonomicFilterLogicKey: 'actions',
+    taxonomicGroupTypes: [TaxonomicFilterGroupType.Actions],
+}
+
+export const Properties: StoryFn<typeof TaxonomicFilter> = (args) => {
+    return (
+        <div className="w-fit border rounded p-2 bg-bg-light">
             <TaxonomicFilter {...args} />
         </div>
     )

@@ -1,11 +1,12 @@
-import { ComponentMeta } from '@storybook/react'
+import { Meta } from '@storybook/react'
 import { ErrorDisplay } from 'lib/components/Errors/ErrorDisplay'
 import { EventType, RecordingEventType } from '~/types'
 
-export default {
+const meta: Meta<typeof ErrorDisplay> = {
     title: 'Components/Errors/Error Display',
     component: ErrorDisplay,
-} as ComponentMeta<typeof ErrorDisplay>
+}
+export default meta
 
 function errorEvent(properties: Record<string, any>): EventType | RecordingEventType {
     return {
@@ -42,7 +43,6 @@ function errorEvent(properties: Record<string, any>): EventType | RecordingEvent
                 customer: 'the-customer',
                 instance: 'https://app.posthog.com',
             },
-            posthog_version: '1.43.0',
             $exception_message: 'ResizeObserver loop limit exceeded',
             $exception_type: 'Error',
             $exception_personURL: 'https://app.posthog.com/person/the-person-id',
@@ -134,6 +134,19 @@ export function ImportingModule(): JSX.Element {
                 $exception_message: "Importing module '/static/chunk-PIJHGO7Q.js' is not found.",
                 $exception_stack_trace_raw: '[]',
                 $exception_handled: false,
+            })}
+        />
+    )
+}
+
+export function AnonymousErrorWithStackTrace(): JSX.Element {
+    return (
+        <ErrorDisplay
+            event={errorEvent({
+                $exception_type: 'Error',
+                $exception_message: 'wat',
+                $exception_stack_trace_raw:
+                    '[{"filename":"<anonymous>","function":"?","in_app":true,"lineno":1,"colno":26}]',
             })}
         />
     )

@@ -1,6 +1,8 @@
 from enum import Enum
 from typing import Literal
+from semantic_version import Version
 
+FROZEN_POSTHOG_VERSION = Version("1.43.0")  # Frozen at the last self-hosted version, just for backwards compat now
 INTERNAL_BOT_EMAIL_SUFFIX = "@posthogbot.user"
 
 
@@ -96,6 +98,7 @@ SCREEN_EVENT = "$screen"
 AUTOCAPTURE_EVENT = "$autocapture"
 PAGEVIEW_EVENT = "$pageview"
 CUSTOM_EVENT = "custom_event"
+HOGQL = "hogql"
 
 
 DATE_FROM = "date_from"
@@ -173,6 +176,7 @@ BIN_COUNT = "bin_count"
 ENTRANCE_PERIOD_START = "entrance_period_start"
 DROP_OFF = "drop_off"
 FUNNEL_PATHS = "funnel_paths"
+PATHS_HOGQL_EXPRESSION = "paths_hogql_expression"
 PATHS_INCLUDE_EVENT_TYPES = "include_event_types"
 PATHS_INCLUDE_CUSTOM_EVENTS = "include_custom_events"
 PATHS_EXCLUDE_EVENTS = "exclude_events"
@@ -283,3 +287,6 @@ class EventDefinitionType(str, Enum):
 class FlagRequestType(str, Enum):
     DECIDE = "decide"
     LOCAL_EVALUATION = "local-evaluation"
+
+
+ENRICHED_DASHBOARD_INSIGHT_IDENTIFIER = "Feature Viewed"

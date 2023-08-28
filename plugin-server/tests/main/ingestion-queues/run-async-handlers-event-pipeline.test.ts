@@ -1,4 +1,4 @@
-// While these test cases focus on runAsyncHandlersEventPipeline, they were
+// While these test cases focus on runAppsOnEventPipeline, they were
 // explicitly intended to test that failures to produce to the `jobs` topic
 // due to availability errors would be bubbled up to the consumer, where we can
 // then make decisions about how to handle this case e.g. here we test that it
@@ -24,6 +24,7 @@ import { buildOnEventIngestionConsumer } from '../../../src/main/ingestion-queue
 import { Hub } from '../../../src/types'
 import { DependencyUnavailableError } from '../../../src/utils/db/error'
 import { createHub } from '../../../src/utils/db/hub'
+import { PostgresUse } from '../../../src/utils/db/postgres'
 import { UUIDT } from '../../../src/utils/utils'
 import Piscina, { makePiscina } from '../../../src/worker/piscina'
 import { setupPlugins } from '../../../src/worker/plugins/setup'
@@ -39,8 +40,8 @@ import {
 
 jest.setTimeout(10000)
 
-describe('workerTasks.runAsyncHandlersEventPipeline()', () => {
-    // Tests the failure cases for the workerTasks.runAsyncHandlersEventPipeline
+describe('workerTasks.runAppsOnEventPipeline()', () => {
+    // Tests the failure cases for the workerTasks.runAppsOnEventPipeline
     // task. Note that this equally applies to e.g. runEventPipeline task as
     // well and likely could do with adding additional tests for that.
     //
@@ -63,7 +64,7 @@ describe('workerTasks.runAsyncHandlersEventPipeline()', () => {
         ;[hub, closeHub] = await createHub()
         redis = await hub.redisPool.acquire()
         piscinaTaskRunner = createTaskRunner(hub)
-        await hub.postgres.query(POSTGRES_DELETE_TABLES_QUERY) // Need to clear the DB to avoid unique constraint violations on ids
+        await hub.postgres.query(PostgresUse.COMMON_WRITE, POSTGRES_DELETE_TABLES_QUERY, null, 'deleteTables') // Need to clear the DB to avoid unique constraint violations on ids
     })
 
     afterEach(() => {
@@ -120,7 +121,7 @@ describe('workerTasks.runAsyncHandlersEventPipeline()', () => {
 
         await expect(
             piscinaTaskRunner({
-                task: 'runAsyncHandlersEventPipeline',
+                task: 'runAppsOnEventPipeline',
                 args: {
                     event: {
                         distinctId: 'asdf',
@@ -167,12 +168,12 @@ describe('workerTasks.runAsyncHandlersEventPipeline()', () => {
 
         await expect(
             piscinaTaskRunner({
-                task: 'runAsyncHandlersEventPipeline',
+                task: 'runAppsOnEventPipeline',
                 args: { event },
             })
         ).resolves.toEqual({
             args: [expect.objectContaining(event)],
-            lastStep: 'runAsyncHandlersStep',
+            lastStep: 'processOnEventStep',
         })
     })
 })

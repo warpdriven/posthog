@@ -9,7 +9,7 @@ import { useActions } from 'kea'
 import { themeLogic } from './themeLogic'
 import { with3000 } from 'storybook/decorators/with3000'
 
-export default {
+const meta: Meta = {
     title: 'PostHog 3000/Navigation',
     decorators: [
         mswDecorator({
@@ -25,27 +25,26 @@ export default {
     ],
     parameters: {
         layout: 'fullscreen',
-        options: { showPanel: false },
         viewMode: 'story',
         mockDate: '2023-02-01',
     },
-} as Meta
-
+}
+export default meta
 export function LightMode(): JSX.Element {
-    const { syncDarkModePreference } = useActions(themeLogic)
+    const { overrideTheme } = useActions(themeLogic)
     useEffect(() => {
         router.actions.push(urls.projectHomepage())
-        syncDarkModePreference(false)
+        overrideTheme(false)
     }, [])
 
     return <App />
 }
 
 export function DarkMode(): JSX.Element {
-    const { syncDarkModePreference } = useActions(themeLogic)
+    const { overrideTheme } = useActions(themeLogic)
     useEffect(() => {
         router.actions.push(urls.projectHomepage())
-        syncDarkModePreference(true)
+        overrideTheme(true)
     }, [])
 
     return <App />

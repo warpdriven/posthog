@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import { AnimationType } from 'lib/animations/animations'
 import { Animation } from 'lib/components/Animation/Animation'
 import { Spinner } from 'lib/lemon-ui/Spinner/Spinner'
+import { dayjs } from 'lib/dayjs'
 
 const POLL_DELAY_MS = 1000
 const MAX_PNG_POLL = 10
@@ -47,6 +48,7 @@ export async function triggerExport(asset: TriggerExportProps): Promise<void> {
             lemonToast.error('Export failed!')
         }
     } else {
+        // eslint-disable-next-line no-async-promise-executor
         const poller = new Promise(async (resolve, reject) => {
             const trackingProperties = {
                 export_format: asset.export_format,
@@ -63,6 +65,7 @@ export async function triggerExport(asset: TriggerExportProps): Promise<void> {
                     dashboard: asset.dashboard,
                     insight: asset.insight,
                     export_context: asset.export_context,
+                    expires_after: dayjs().add(10, 'minute'),
                 })
 
                 if (!exportedAsset.id) {

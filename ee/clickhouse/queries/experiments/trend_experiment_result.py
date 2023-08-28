@@ -25,7 +25,7 @@ from posthog.models.feature_flag import FeatureFlag
 from posthog.models.filters.filter import Filter
 from posthog.models.team import Team
 from posthog.queries.trends.trends import Trends
-from posthog.queries.trends.util import COUNT_PER_ACTOR_MATH_FUNCTIONS
+from posthog.queries.trends.util import COUNT_PER_ACTOR_MATH_FUNCTIONS, PROPERTY_MATH_FUNCTIONS
 
 Probability = float
 
@@ -45,6 +45,12 @@ def uses_count_per_user_aggregation(filter: Filter):
     entities = filter.entities
     count_per_actor_keys = COUNT_PER_ACTOR_MATH_FUNCTIONS.keys()
     return any(entity.math in count_per_actor_keys for entity in entities)
+
+
+def uses_count_per_property_value_aggregation(filter: Filter):
+    entities = filter.entities
+    count_per_prop_value_keys = PROPERTY_MATH_FUNCTIONS.keys()
+    return any(entity.math in count_per_prop_value_keys for entity in entities)
 
 
 class ClickhouseTrendExperimentResult:
@@ -69,6 +75,7 @@ class ClickhouseTrendExperimentResult:
         experiment_start_date: datetime,
         experiment_end_date: Optional[datetime] = None,
         trend_class: Type[Trends] = Trends,
+        custom_exposure_filter: Optional[Filter] = None,
     ):
 
         breakdown_key = f"$feature/{feature_flag.key}"
@@ -84,10 +91,13 @@ class ClickhouseTrendExperimentResult:
             )
 
         count_per_user_aggregation = uses_count_per_user_aggregation(filter)
+        count_per_property_value_aggregation = uses_count_per_property_value_aggregation(filter)
 
         query_filter = filter.shallow_clone(
             {
-                "display": TRENDS_CUMULATIVE if not count_per_user_aggregation else TRENDS_LINEAR,
+                "display": TRENDS_CUMULATIVE
+                if not (count_per_user_aggregation or count_per_property_value_aggregation)
+                else TRENDS_LINEAR,
                 "date_from": start_date_in_project_timezone,
                 "date_to": end_date_in_project_timezone,
                 "explicit_date": True,
@@ -98,7 +108,7 @@ class ClickhouseTrendExperimentResult:
             }
         )
 
-        if count_per_user_aggregation:
+        if count_per_user_aggregation or count_per_property_value_aggregation:
             # A trend experiment can have only one metric, so take the first one to calculate exposure
             # We copy the entity to avoid mutating the original filter
             entity = query_filter.shallow_clone({}).entities[0]
@@ -129,30 +139,45 @@ class ClickhouseTrendExperimentResult:
             )
 
         else:
-            exposure_filter = filter.shallow_clone(
-                {
-                    "display": TRENDS_CUMULATIVE,
-                    "date_from": experiment_start_date,
-                    "date_to": experiment_end_date,
-                    "explicit_date": True,
-                    ACTIONS: [],
-                    EVENTS: [
-                        {
-                            "id": "$feature_flag_called",
-                            "name": "$feature_flag_called",
-                            "order": 0,
-                            "type": "events",
-                            "math": "dau",
-                        }
-                    ],
-                    "breakdown_type": "event",
-                    "breakdown": "$feature_flag_response",
-                    "properties": [
-                        {"key": "$feature_flag_response", "value": variants, "operator": "exact", "type": "event"},
-                        {"key": "$feature_flag", "value": [feature_flag.key], "operator": "exact", "type": "event"},
-                    ],
-                }
-            )
+            # TODO: Exposure doesn't need to compute daily values, so instead of
+            # using TRENDS_CUMULATIVE, we can use TRENDS_TABLE to just get the total.
+            if custom_exposure_filter:
+                exposure_filter = custom_exposure_filter.shallow_clone(
+                    {
+                        "display": TRENDS_CUMULATIVE,
+                        "date_from": experiment_start_date,
+                        "date_to": experiment_end_date,
+                        "explicit_date": True,
+                        "breakdown": breakdown_key,
+                        "breakdown_type": "event",
+                        "properties": [{"key": breakdown_key, "value": variants, "operator": "exact", "type": "event"}],
+                    }
+                )
+            else:
+                exposure_filter = filter.shallow_clone(
+                    {
+                        "display": TRENDS_CUMULATIVE,
+                        "date_from": experiment_start_date,
+                        "date_to": experiment_end_date,
+                        "explicit_date": True,
+                        ACTIONS: [],
+                        EVENTS: [
+                            {
+                                "id": "$feature_flag_called",
+                                "name": "$feature_flag_called",
+                                "order": 0,
+                                "type": "events",
+                                "math": "dau",
+                            }
+                        ],
+                        "breakdown_type": "event",
+                        "breakdown": "$feature_flag_response",
+                        "properties": [
+                            {"key": "$feature_flag_response", "value": variants, "operator": "exact", "type": "event"},
+                            {"key": "$feature_flag", "value": [feature_flag.key], "operator": "exact", "type": "event"},
+                        ],
+                    }
+                )
 
         self.query_filter = query_filter
         self.exposure_filter = exposure_filter
@@ -189,7 +214,9 @@ class ClickhouseTrendExperimentResult:
         exposure_counts = {}
         exposure_ratios = {}
 
-        if uses_count_per_user_aggregation(self.query_filter):
+        if uses_count_per_user_aggregation(self.query_filter) or uses_count_per_property_value_aggregation(
+            self.query_filter
+        ):
             filtered_exposure_results = [
                 result for result in exposure_results if result["action"]["math"] == UNIQUE_USERS
             ]

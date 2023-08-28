@@ -1,25 +1,24 @@
 import { useEffect } from 'react'
-import { Meta } from '@storybook/react'
+import { Meta, StoryObj } from '@storybook/react'
 import funnelOneStep from './funnelOneStep.json'
 import { useStorybookMocks } from '~/mocks/browser'
 import { router } from 'kea-router'
-import insight from '../__mocks__/trendsLine.json'
-import { insightLogic } from 'scenes/insights/insightLogic'
+import insight from '../../../mocks/fixtures/api/projects/:team_id/insights/trendsLine.json'
 import { InsightShortId } from '~/types'
 import { createInsightStory } from 'scenes/insights/__mocks__/createInsightScene'
 import { App } from 'scenes/App'
+import { insightVizDataLogic } from '../insightVizDataLogic'
 
-// some metadata and optional parameters
-export default {
+type Story = StoryObj<typeof App>
+const meta: Meta = {
     title: 'Scenes-App/Insights/Error states',
     parameters: {
         layout: 'fullscreen',
-        options: { showPanel: false },
         viewMode: 'story',
         testOptions: { skip: true }, // FIXME
     },
-} as Meta
-
+}
+export default meta
 export function EmptyState(): JSX.Element {
     useStorybookMocks({
         get: {
@@ -69,21 +68,16 @@ export function TimeoutState(): JSX.Element {
                 ctx.status(200),
                 ctx.json({ result: insight.result }),
             ],
-            '/api/projects/:team_id/insights/:id': (_, __, ctx) => [
-                ctx.delay(86400000),
-                ctx.status(200),
-                ctx.json({ result: insight.result }),
-            ],
         },
     })
     useEffect(() => {
         router.actions.push(`/insights/${insight.short_id}`)
         window.setTimeout(() => {
-            const logic = insightLogic.findMounted({ dashboardItemId: insight.short_id as InsightShortId })
-            logic?.actions.markInsightTimedOut('a-uuid-query-id')
-        }, 50)
+            const logic = insightVizDataLogic.findMounted({ dashboardItemId: insight.short_id as InsightShortId })
+            logic?.actions.setTimedOutQueryId('a-uuid-query-id')
+        }, 150)
     }, [])
     return <App />
 }
 
-export const FunnelSingleStep = createInsightStory(funnelOneStep as any)
+export const FunnelSingleStep: Story = createInsightStory(funnelOneStep as any)

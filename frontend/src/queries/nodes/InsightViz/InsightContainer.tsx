@@ -1,13 +1,12 @@
 import { Card, Col, Row } from 'antd'
 import { useValues } from 'kea'
-import clsx from 'clsx'
 
 import { insightLogic } from 'scenes/insights/insightLogic'
 import { funnelDataLogic } from 'scenes/funnels/funnelDataLogic'
 import { insightDataLogic } from 'scenes/insights/insightDataLogic'
 import { insightNavLogic } from 'scenes/insights/InsightNav/insightNavLogic'
 
-import { QueryContext, StickinessFilter, TrendsFilter } from '~/queries/schema'
+import { QueryContext } from '~/queries/schema'
 import { ChartDisplayType, FunnelVizType, ExporterFormat, InsightType, ItemMode } from '~/types'
 import { Tooltip } from 'lib/lemon-ui/Tooltip'
 import { Animation } from 'lib/components/Animation/Animation'
@@ -15,35 +14,34 @@ import { AnimationType } from 'lib/animations/animations'
 import { ExportButton } from 'lib/components/ExportButton/ExportButton'
 
 import { InsightDisplayConfig } from './InsightDisplayConfig'
-import { FunnelCanvasLabelDataExploration } from 'scenes/funnels/FunnelCanvasLabel'
+import { FunnelCanvasLabel } from 'scenes/funnels/FunnelCanvasLabel'
 import { TrendInsight } from 'scenes/trends/Trends'
 import { RetentionContainer } from 'scenes/retention/RetentionContainer'
-import { PathsDataExploration } from 'scenes/paths/Paths'
-import { InsightsTableDataExploration } from 'scenes/insights/views/InsightsTable/InsightsTable'
+import { Paths } from 'scenes/paths/Paths'
+import { InsightsTable } from 'scenes/insights/views/InsightsTable/InsightsTable'
 import {
     FunnelInvalidExclusionState,
-    FunnelSingleStepStateDataExploration,
+    FunnelSingleStepState,
     InsightEmptyState,
     InsightErrorState,
     InsightTimeoutState,
 } from 'scenes/insights/EmptyStates'
 import { PathCanvasLabel } from 'scenes/paths/PathsLabel'
 import { InsightLegend } from 'lib/components/InsightLegend/InsightLegend'
-import { InsightLegendButtonDataExploration } from 'lib/components/InsightLegend/InsightLegendButton'
 import { LemonBanner } from 'lib/lemon-ui/LemonBanner'
-import { ComputationTimeWithRefresh } from './ComputationTimeWithRefresh'
-import { FunnelInsightDataExploration } from 'scenes/insights/views/Funnels/FunnelInsight'
-import { FunnelStepsTableDataExploration } from 'scenes/insights/views/Funnels/FunnelStepsTable'
+import { FunnelInsight } from 'scenes/insights/views/Funnels/FunnelInsight'
+import { FunnelStepsTable } from 'scenes/insights/views/Funnels/FunnelStepsTable'
 import { insightVizDataLogic } from 'scenes/insights/insightVizDataLogic'
 import { FunnelCorrelation } from 'scenes/insights/views/Funnels/FunnelCorrelation'
+import { InsightResultMetadata } from './InsightResultMetadata'
 
 const VIEW_MAP = {
     [`${InsightType.TRENDS}`]: <TrendInsight view={InsightType.TRENDS} />,
     [`${InsightType.STICKINESS}`]: <TrendInsight view={InsightType.STICKINESS} />,
     [`${InsightType.LIFECYCLE}`]: <TrendInsight view={InsightType.LIFECYCLE} />,
-    [`${InsightType.FUNNELS}`]: <FunnelInsightDataExploration />,
+    [`${InsightType.FUNNELS}`]: <FunnelInsight />,
     [`${InsightType.RETENTION}`]: <RetentionContainer />,
-    [`${InsightType.PATHS}`]: <PathsDataExploration />,
+    [`${InsightType.PATHS}`]: <Paths />,
 }
 
 export function InsightContainer({
@@ -51,6 +49,7 @@ export function InsightContainer({
     disableTable,
     disableCorrelationTable,
     disableLastComputation,
+    disableLastComputationRefresh,
     insightMode,
     context,
 }: {
@@ -58,6 +57,7 @@ export function InsightContainer({
     disableTable?: boolean
     disableCorrelationTable?: boolean
     disableLastComputation?: boolean
+    disableLastComputationRefresh?: boolean
     insightMode?: ItemMode
     context?: QueryContext
 }): JSX.Element {
@@ -73,11 +73,11 @@ export function InsightContainer({
         isFunnels,
         isPaths,
         display,
+        showLegend,
         trendsFilter,
         funnelsFilter,
         supportsDisplay,
         isUsingSessionAnalysis,
-        insightFilter,
         samplingFactor,
         insightDataLoading,
         erroredQueryId,
@@ -87,40 +87,42 @@ export function InsightContainer({
 
     // Empty states that completely replace the graph
     const BlockingEmptyState = (() => {
-        if (insightDataLoading && timedOutQueryId === null) {
+        if (insightDataLoading) {
             return (
-                <div className="text-center">
-                    <Animation type={AnimationType.LaptopHog} />
-                </div>
+                <>
+                    <div className="text-center">
+                        <Animation type={AnimationType.LaptopHog} />
+                    </div>
+                    {!!timedOutQueryId && (
+                        <InsightTimeoutState isLoading={true} queryId={timedOutQueryId} insightProps={insightProps} />
+                    )}
+                </>
             )
         }
 
         // Insight specific empty states - note order is important here
         if (activeView === InsightType.FUNNELS) {
             if (!isFunnelWithEnoughSteps) {
-                return (
-                    <FunnelSingleStepStateDataExploration actionable={insightMode === ItemMode.Edit || disableTable} />
-                )
+                return <FunnelSingleStepState actionable={insightMode === ItemMode.Edit || disableTable} />
             }
             if (!areExclusionFiltersValid) {
                 return <FunnelInvalidExclusionState />
             }
-            if (!hasFunnelResults && !insightDataLoading) {
+            if (!hasFunnelResults && !erroredQueryId && !insightDataLoading) {
                 return <InsightEmptyState heading={context?.emptyStateHeading} detail={context?.emptyStateDetail} />
             }
         }
 
         // Insight agnostic empty states
-        if (!!erroredQueryId) {
+        if (erroredQueryId) {
             return <InsightErrorState queryId={erroredQueryId} />
         }
-        if (!!timedOutQueryId) {
+        if (timedOutQueryId) {
             return (
                 <InsightTimeoutState
                     isLoading={insightDataLoading}
                     queryId={timedOutQueryId}
                     insightProps={insightProps}
-                    insightType={activeView}
                 />
             )
         }
@@ -140,8 +142,8 @@ export function InsightContainer({
         ) {
             return (
                 <>
-                    <h2 className="my-4 mx-0">Detailed results</h2>
-                    <FunnelStepsTableDataExploration />
+                    <h2 className="font-semibold text-lg my-4 mx-0">Detailed results</h2>
+                    <FunnelStepsTable />
                 </>
             )
         }
@@ -159,7 +161,7 @@ export function InsightContainer({
                 <>
                     {exportContext && (
                         <div className="flex items-center justify-between my-4 mx-0">
-                            <h2 className="m-0">Detailed results</h2>
+                            <h2 className="font-semibold text-lg m-0">Detailed results</h2>
                             <Tooltip title="Export this table in CSV format" placement="left">
                                 <ExportButton
                                     type="secondary"
@@ -175,7 +177,7 @@ export function InsightContainer({
                         </div>
                     )}
 
-                    <InsightsTableDataExploration
+                    <InsightsTable
                         isLegend
                         filterKey="trends_TRENDS"
                         canEditSeriesNameInline={!trendsFilter?.formula && insightMode === ItemMode.Edit}
@@ -206,33 +208,45 @@ export function InsightContainer({
                 className="insights-graph-container"
             >
                 <div>
-                    <div
-                        className={clsx('flex items-center justify-between insights-graph-header', {
-                            funnels: isFunnels,
-                        })}
-                    >
-                        {/*Don't add more than two columns in this row.*/}
-                        {(!disableLastComputation || !!samplingFactor) && (
-                            <div className="flex items-center">
-                                {!disableLastComputation && <ComputationTimeWithRefresh />}
-                                {!!samplingFactor ? (
-                                    <span className="text-muted-alt">
-                                        {!disableLastComputation && <span className="mx-1">•</span>}
-                                        Results calculated from {samplingFactor * 100}% of users
-                                    </span>
-                                ) : null}
+                    {isFunnels && (
+                        <div className="overflow-hidden">
+                            {/* negative margin-top so that the border is only visible when the rows wrap */}
+                            <div className="flex flex-wrap-reverse whitespace-nowrap gap-x-8 -mt-px">
+                                {(!disableLastComputation || !!samplingFactor) && (
+                                    <div className="flex grow items-center insights-graph-header border-t">
+                                        <InsightResultMetadata
+                                            disableLastComputation={disableLastComputation}
+                                            disableLastComputationRefresh={disableLastComputationRefresh}
+                                        />
+                                    </div>
+                                )}
+                                <div
+                                    className={`flex insights-graph-header ${
+                                        disableLastComputation ? 'border-b w-full mb-4' : 'border-t'
+                                    }`}
+                                >
+                                    <FunnelCanvasLabel />
+                                </div>
                             </div>
-                        )}
-
-                        <div>
-                            {isFunnels ? <FunnelCanvasLabelDataExploration /> : null}
-                            {isPaths ? <PathCanvasLabel /> : null}
-                            <InsightLegendButtonDataExploration />
                         </div>
-                    </div>
-                    {!!BlockingEmptyState ? (
+                    )}
+
+                    {!isFunnels && (!disableLastComputation || !!samplingFactor) && (
+                        <div className="flex items-center justify-between insights-graph-header">
+                            <div className="flex items-center">
+                                <InsightResultMetadata
+                                    disableLastComputation={disableLastComputation}
+                                    disableLastComputationRefresh={disableLastComputationRefresh}
+                                />
+                            </div>
+
+                            <div>{isPaths ? <PathCanvasLabel /> : null}</div>
+                        </div>
+                    )}
+
+                    {BlockingEmptyState ? (
                         BlockingEmptyState
-                    ) : supportsDisplay && (insightFilter as TrendsFilter | StickinessFilter)?.show_legend ? (
+                    ) : supportsDisplay && showLegend ? (
                         <Row className="insights-graph-container-row" wrap={false}>
                             <Col className="insights-graph-container-row-left">{VIEW_MAP[activeView]}</Col>
                             <Col className="insights-graph-container-row-right">

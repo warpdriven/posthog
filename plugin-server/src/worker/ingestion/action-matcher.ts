@@ -19,8 +19,8 @@ import {
     PropertyOperator,
     StringMatching,
 } from '../../types'
-import { DB } from '../../utils/db/db'
 import { extractElements } from '../../utils/db/elements-chain'
+import { PostgresRouter, PostgresUse } from '../../utils/db/postgres'
 import { stringToBoolean } from '../../utils/env-utils'
 import { stringify } from '../../utils/utils'
 import { ActionManager } from './action-manager'
@@ -126,14 +126,18 @@ export function matchString(actual: string, expected: string, matching: StringMa
 }
 
 export class ActionMatcher {
-    private db: DB
+    private postgres: PostgresRouter
     private actionManager: ActionManager
     private statsd: StatsD | undefined
 
-    constructor(db: DB, actionManager: ActionManager, statsd?: StatsD) {
-        this.db = db
+    constructor(postgres: PostgresRouter, actionManager: ActionManager, statsd?: StatsD) {
+        this.postgres = postgres
         this.actionManager = actionManager
         this.statsd = statsd
+    }
+
+    public hasWebhooks(teamId: number): boolean {
+        return Object.keys(this.actionManager.getTeamActions(teamId)).length > 0
     }
 
     /** Get all actions matched to the event. */
@@ -377,7 +381,25 @@ export class ActionMatcher {
         if (isNaN(cohortId)) {
             throw new Error(`Can't match against invalid cohort ID value "${filter.value}!"`)
         }
-        return await this.db.doesPersonBelongToCohort(Number(filter.value), personUuid, teamId)
+        return await this.doesPersonBelongToCohort(Number(filter.value), personUuid, teamId)
+    }
+
+    public async doesPersonBelongToCohort(cohortId: number, personUuid: string, teamId: number): Promise<boolean> {
+        const psqlResult = await this.postgres.query(
+            PostgresUse.COMMON_READ,
+            `
+        SELECT count(1) AS count
+        FROM posthog_cohortpeople
+        JOIN posthog_cohort ON (posthog_cohort.id = posthog_cohortpeople.cohort_id)
+        JOIN (SELECT * FROM posthog_person where team_id = $3) AS posthog_person_in_team ON (posthog_cohortpeople.person_id = posthog_person_in_team.id)
+        WHERE cohort_id=$1
+          AND posthog_person_in_team.uuid=$2
+          AND posthog_cohortpeople.version IS NOT DISTINCT FROM posthog_cohort.version
+        `,
+            [cohortId, personUuid, teamId],
+            'doesPersonBelongToCohort'
+        )
+        return psqlResult.rows[0].count > 0
     }
 
     /**

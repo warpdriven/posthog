@@ -3,16 +3,16 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import kafka.errors
+from django.conf import settings
 from kafka import KafkaConsumer as KC
 from kafka import KafkaProducer as KP
 from kafka.producer.future import FutureProduceResult, FutureRecordMetadata, RecordMetadata
 from kafka.structs import TopicPartition
 from statshog.defaults.django import statsd
 from structlog import get_logger
-from django.conf import settings
+
 from posthog.client import sync_execute
 from posthog.kafka_client import helper
-
 from posthog.utils import SingletonDecorator
 
 KAFKA_PRODUCER_RETRIES = 5
@@ -43,7 +43,7 @@ class KafkaProducerForTests:
         future.success(None)
         return future
 
-    def flush(self):
+    def flush(self, timeout=None):
         return
 
 
@@ -99,7 +99,7 @@ class _KafkaProducer:
         kafka_base64_keys=None,
         kafka_hosts=None,
         kafka_security_protocol=None,
-        max_message_bytes=None,
+        max_request_size=None,
         compression_type=None,
     ):
         if kafka_security_protocol is None:
@@ -119,7 +119,7 @@ class _KafkaProducer:
                 bootstrap_servers=kafka_hosts,
                 security_protocol=kafka_security_protocol or _KafkaSecurityProtocol.PLAINTEXT,
                 compression_type=compression_type,
-                **{"max.message.bytes": max_message_bytes} if max_message_bytes else {},
+                **{"max_request_size": max_request_size} if max_request_size else {},
                 **_sasl_params(),
             )
 
@@ -155,6 +155,9 @@ class _KafkaProducer:
         future.add_callback(self.on_send_success).add_errback(lambda exc: self.on_send_failure(topic=topic, exc=exc))
         return future
 
+    def flush(self, timeout=None):
+        self.producer.flush(timeout)
+
     def close(self):
         self.producer.flush()
 
@@ -184,13 +187,11 @@ SessionRecordingKafkaProducer = SingletonDecorator(_KafkaProducer)
 
 
 def sessionRecordingKafkaProducer() -> _KafkaProducer:
-    if not settings.SESSION_RECORDING_KAFKA_HOSTS:
-        raise Exception("Session recording kafka producer not available")
-
     return SessionRecordingKafkaProducer(
         kafka_hosts=settings.SESSION_RECORDING_KAFKA_HOSTS,
         kafka_security_protocol=settings.SESSION_RECORDING_KAFKA_SECURITY_PROTOCOL,
-        max_message_bytes=settings.SESSION_RECORDING_KAFKA_MAX_MESSAGE_BYTES,
+        max_request_size=settings.SESSION_RECORDING_KAFKA_MAX_REQUEST_SIZE_BYTES,
+        compression_type=settings.SESSION_RECORDING_KAFKA_COMPRESSION,
     )
 
 

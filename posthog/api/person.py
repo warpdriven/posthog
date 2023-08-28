@@ -1,4 +1,5 @@
 import json
+from posthog.renderers import SafeJSONRenderer
 from datetime import datetime
 from typing import (
     Any,
@@ -31,13 +32,14 @@ from posthog.api.documentation import PersonPropertiesSerializer, extend_schema
 from posthog.api.routing import StructuredViewSetMixin
 from posthog.api.utils import format_paginated_url, get_pk_or_uuid, get_target_entity
 from posthog.constants import CSV_EXPORT_LIMIT, INSIGHT_FUNNELS, INSIGHT_PATHS, LIMIT, OFFSET, FunnelVizType
-from posthog.decorators import cached_function
+from posthog.decorators import cached_by_filters
 from posthog.logging.timing import timed
 from posthog.models import Cohort, Filter, Person, User, Team
 from posthog.models.activity_logging.activity_log import Change, Detail, load_activity, log_activity
 from posthog.models.activity_logging.activity_page import activity_page_response
 from posthog.models.async_deletion import AsyncDeletion, DeletionType
 from posthog.models.cohort.util import get_all_cohort_ids_by_person_uuid
+from posthog.models.filters.lifecycle_filter import LifecycleFilter
 from posthog.models.filters.path_filter import PathFilter
 from posthog.models.filters.properties_timeline_filter import PropertiesTimelineFilter
 from posthog.models.filters.retention_filter import RetentionFilter
@@ -61,12 +63,9 @@ from posthog.queries.util import get_earliest_timestamp
 from posthog.rate_limit import ClickHouseBurstRateThrottle, ClickHouseSustainedRateThrottle
 from posthog.settings import EE_AVAILABLE
 from posthog.tasks.split_person import split_person
-from posthog.utils import (
-    convert_property_value,
-    format_query_params_absolute_url,
-    is_anonymous_id,
-    relative_date_parse,
-)
+from posthog.utils import convert_property_value, format_query_params_absolute_url, is_anonymous_id
+from prometheus_client import Counter
+from posthog.metrics import LABEL_TEAM_ID
 
 DEFAULT_PAGE_LIMIT = 100
 # Sync with .../lib/constants.tsx and .../ingestion/hooks.ts
@@ -79,6 +78,12 @@ PERSON_DEFAULT_DISPLAY_NAME_PROPERTIES = [
     "Username",
     "UserName",
 ]
+
+API_PERSON_LIST_BYTES_READ_FROM_POSTGRES_COUNTER = Counter(
+    "api_person_list_bytes_read_from_postgres",
+    "An estimate of how many bytes we've read from postgres to return the person endpoint.",
+    labelnames=[LABEL_TEAM_ID],
+)
 
 
 class PersonLimitOffsetPagination(LimitOffsetPagination):
@@ -156,7 +161,6 @@ def get_funnel_actor_class(filter: Filter) -> Callable:
     funnel_actor_class: Type[ActorBaseQuery]
 
     if filter.correlation_person_entity and EE_AVAILABLE:
-
         if EE_AVAILABLE:
             from ee.clickhouse.queries.funnels.funnel_correlation_persons import FunnelCorrelationActors
 
@@ -280,6 +284,11 @@ class PersonViewSet(StructuredViewSetMixin, viewsets.ModelViewSet):
             else None
         )
 
+        # TEMPORARY: Work out usage patterns of this endpoint
+        renderer = SafeJSONRenderer()
+        size = len(renderer.render(serialized_actors))
+        API_PERSON_LIST_BYTES_READ_FROM_POSTGRES_COUNTER.labels(team_id=team.pk).inc(size)
+
         return Response(
             {
                 "results": serialized_actors,
@@ -339,7 +348,7 @@ class PersonViewSet(StructuredViewSetMixin, viewsets.ModelViewSet):
         if key:
             result = self._get_person_property_values_for_key(key, value)
 
-            for (value, count) in result:
+            for value, count in result:
                 try:
                     # Try loading as json for dicts or arrays
                     flattened.append({"name": convert_property_value(json.loads(value)), "count": count})  # type: ignore
@@ -369,7 +378,7 @@ class PersonViewSet(StructuredViewSetMixin, viewsets.ModelViewSet):
         person: Person = self.get_object()
         distinct_ids = person.distinct_ids
 
-        split_person.delay(person.id, request.data.get("main_distinct_id", None))
+        split_person.delay(person.id, request.data.get("main_distinct_id", None), None)
 
         log_activity(
             organization_id=self.organization.id,
@@ -561,7 +570,7 @@ class PersonViewSet(StructuredViewSetMixin, viewsets.ModelViewSet):
 
         return self._respond_with_cached_results(self.calculate_funnel_persons(request))
 
-    @cached_function
+    @cached_by_filters
     def calculate_funnel_persons(
         self, request: request.Request
     ) -> Dict[str, Tuple[List, Optional[str], Optional[str], int]]:
@@ -583,7 +592,7 @@ class PersonViewSet(StructuredViewSetMixin, viewsets.ModelViewSet):
 
         return self._respond_with_cached_results(self.calculate_path_persons(request))
 
-    @cached_function
+    @cached_by_filters
     def calculate_path_persons(
         self, request: request.Request
     ) -> Dict[str, Tuple[List, Optional[str], Optional[str], int]]:
@@ -611,7 +620,7 @@ class PersonViewSet(StructuredViewSetMixin, viewsets.ModelViewSet):
 
         return self._respond_with_cached_results(self.calculate_trends_persons(request))
 
-    @cached_function
+    @cached_by_filters
     def calculate_trends_persons(
         self, request: request.Request
     ) -> Dict[str, Tuple[List, Optional[str], Optional[str], int]]:
@@ -647,26 +656,23 @@ class PersonViewSet(StructuredViewSetMixin, viewsets.ModelViewSet):
                 status=400,
             )
 
-        filter = Filter(request=request, team=self.team)
-        filter = prepare_actor_query_filter(filter)
-
         target_date = request.GET.get("target_date", None)
         if target_date is None:
             return response.Response(
                 {"message": "Missing parameter", "detail": "Must include specified date"}, status=400
             )
-        target_date_parsed = relative_date_parse(target_date)
         lifecycle_type = request.GET.get("lifecycle_type", None)
         if lifecycle_type is None:
             return response.Response(
                 {"message": "Missing parameter", "detail": "Must include lifecycle type"}, status=400
             )
 
+        filter = LifecycleFilter(request=request, data=request.GET.dict(), team=self.team)
+        filter = prepare_actor_query_filter(filter)
+
         people = self.lifecycle_class().get_people(
-            target_date=target_date_parsed,
             filter=filter,
             team=team,
-            lifecycle_type=lifecycle_type,
         )
         next_url = paginated_result(request, len(people), filter.offset, filter.limit)
         return response.Response({"results": [{"people": people, "count": len(people)}], "next": next_url})
@@ -716,7 +722,7 @@ def paginated_result(
     return format_paginated_url(request, offset, limit) if count >= limit else None
 
 
-T = TypeVar("T", Filter, PathFilter, RetentionFilter, StickinessFilter)
+T = TypeVar("T", Filter, PathFilter, RetentionFilter, LifecycleFilter, StickinessFilter)
 
 
 def prepare_actor_query_filter(filter: T) -> T:

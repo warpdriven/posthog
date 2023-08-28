@@ -18,6 +18,7 @@ import { pluginActivityDescriber } from 'scenes/plugins/pluginActivityDescriptio
 import { insightActivityDescriber } from 'scenes/saved-insights/activityDescriptions'
 import { personActivityDescriber } from 'scenes/persons/activityDescriptions'
 import { dataManagementActivityDescriber } from 'scenes/data-management/dataManagementDescribers'
+import { notebookActivityDescriber } from 'scenes/notebooks/Notebook/notebookActivityDescriber'
 
 /**
  * Having this function inside the `humanizeActivity module was causing very weird test errors in other modules
@@ -38,6 +39,8 @@ export const describerFor = (logItem?: ActivityLogItem): Describer | undefined =
         case ActivityScope.EVENT_DEFINITION:
         case ActivityScope.PROPERTY_DEFINITION:
             return dataManagementActivityDescriber
+        case ActivityScope.NOTEBOOK:
+            return notebookActivityDescriber
         default:
             return undefined
     }
@@ -143,16 +146,16 @@ export const activityLogLogic = kea<activityLogLogicType>({
             }
         }
         return {
-            '/person/*': ({}, searchParams, hashParams) => onPageChange(searchParams, hashParams, ActivityScope.PERSON),
-            [urls.featureFlags()]: ({}, searchParams, hashParams) =>
+            '/person/*': (_, searchParams, hashParams) => onPageChange(searchParams, hashParams, ActivityScope.PERSON),
+            [urls.featureFlags()]: (_, searchParams, hashParams) =>
                 onPageChange(searchParams, hashParams, ActivityScope.FEATURE_FLAG),
-            [urls.savedInsights()]: ({}, searchParams, hashParams) =>
+            [urls.savedInsights()]: (_, searchParams, hashParams) =>
                 onPageChange(searchParams, hashParams, ActivityScope.INSIGHT),
-            [urls.projectApps()]: ({}, searchParams, hashParams) =>
+            [urls.projectApps()]: (_, searchParams, hashParams) =>
                 onPageChange(searchParams, hashParams, ActivityScope.PLUGIN),
-            [urls.featureFlag(':id')]: ({}, searchParams, hashParams) =>
+            [urls.featureFlag(':id')]: (_, searchParams, hashParams) =>
                 onPageChange(searchParams, hashParams, ActivityScope.FEATURE_FLAG, true),
-            [urls.appHistory(':pluginConfigId')]: ({}, searchParams, hashParams) =>
+            [urls.appHistory(':pluginConfigId')]: (_, searchParams, hashParams) =>
                 onPageChange(searchParams, hashParams, ActivityScope.PLUGIN, true),
         }
     },

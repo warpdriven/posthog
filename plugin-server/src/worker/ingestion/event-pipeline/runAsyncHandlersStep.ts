@@ -1,33 +1,35 @@
 import { runInstrumentedFunction } from '../../../main/utils'
-import { Element, PostIngestionEvent } from '../../../types'
+import { PostIngestionEvent } from '../../../types'
 import { convertToProcessedPluginEvent } from '../../../utils/event'
 import { runOnEvent } from '../../plugins/run'
+import { ActionMatcher } from '../action-matcher'
+import { HookCommander, instrumentWebhookStep } from '../hooks'
 import { EventPipelineRunner } from './runner'
 
-export async function runAsyncHandlersStep(runner: EventPipelineRunner, event: PostIngestionEvent) {
-    await Promise.all([processOnEvent(runner, event), processWebhooks(runner, event, event.elementsList)])
-
-    return null
-}
-
-async function processOnEvent(runner: EventPipelineRunner, event: PostIngestionEvent) {
+export async function processOnEventStep(runner: EventPipelineRunner, event: PostIngestionEvent) {
     const processedPluginEvent = convertToProcessedPluginEvent(event)
 
     await runInstrumentedFunction({
-        server: runner.hub,
         event: processedPluginEvent,
         func: (event) => runOnEvent(runner.hub, event),
         statsKey: `kafka_queue.single_on_event`,
         timeoutMessage: `After 30 seconds still running onEvent`,
         teamId: event.teamId,
     })
+    return null
 }
 
-async function processWebhooks(
-    runner: EventPipelineRunner,
+export async function processWebhooksStep(
     event: PostIngestionEvent,
-    elements: Element[] | undefined
+    actionMatcher: ActionMatcher,
+    hookCannon: HookCommander
 ) {
-    const actionMatches = await runner.hub.actionMatcher.match(event, elements)
-    await runner.hub.hookCannon.findAndFireHooks(event, actionMatches)
+    const actionMatches = await instrumentWebhookStep('actionMatching', async () => {
+        const elements = event.elementsList
+        return await actionMatcher.match(event, elements)
+    })
+    await instrumentWebhookStep('findAndfireHooks', async () => {
+        await hookCannon.findAndFireHooks(event, actionMatches)
+    })
+    return null
 }

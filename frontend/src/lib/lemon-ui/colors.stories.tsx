@@ -2,18 +2,18 @@ import { Meta } from '@storybook/react'
 import { Popover } from './Popover/Popover'
 import { useState } from 'react'
 
-export default {
+const meta: Meta = {
     title: 'Lemon UI/Colors',
     parameters: {
-        options: { showPanel: false },
         docs: {
             description: {
                 component: 'Colors can be used in a variety of ways',
             },
         },
     },
-} as Meta
-
+    tags: ['autodocs'],
+}
+export default meta
 const colorGroups = {
     primary: ['primary-highlight', 'primary-light', 'primary', 'primary-dark'],
     danger: ['danger-highlight', 'danger-light', 'danger', 'danger-dark'],
@@ -23,7 +23,7 @@ const colorGroups = {
     'default (primary text)': ['default', 'default-dark'],
     'muted (secondary text)': ['muted', 'muted-dark'],
     'muted-alt ': ['muted-alt', 'muted-alt-dark'],
-    border: ['border', 'border-light', 'border-dark', 'border-active'],
+    border: ['border', 'border-light', 'border-bold', 'border-active'],
     light: ['white', 'light'],
 }
 

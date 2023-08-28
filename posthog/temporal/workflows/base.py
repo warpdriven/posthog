@@ -3,9 +3,13 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from posthog.batch_exports.service import update_batch_export_run_status, create_batch_export_run
-from temporalio import activity
 from asgiref.sync import sync_to_async
+from temporalio import activity
+
+from posthog.batch_exports.service import (
+    create_batch_export_run,
+    update_batch_export_run_status,
+)
 
 
 class PostHogWorkflow(ABC):
@@ -44,8 +48,7 @@ class CreateBatchExportRunInputs:
 
     Attributes:
         team_id: The id of the team the BatchExportRun belongs to.
-        batch_export_id:
-        run_id:
+        batch_export_id: The id of the BatchExport this BatchExportRun belongs to.
         data_interval_start: Start of this BatchExportRun's data interval.
         data_interval_end: End of this BatchExportRun's data interval.
     """
@@ -54,6 +57,7 @@ class CreateBatchExportRunInputs:
     batch_export_id: str
     data_interval_start: str
     data_interval_end: str
+    status: str = "Starting"
 
 
 @activity.defn
@@ -72,6 +76,7 @@ async def create_export_run(inputs: CreateBatchExportRunInputs) -> str:
         batch_export_id=UUID(inputs.batch_export_id),
         data_interval_start=inputs.data_interval_start,
         data_interval_end=inputs.data_interval_end,
+        status=inputs.status,
     )
 
     activity.logger.info(f"Created BatchExportRun {run.id} in team {inputs.team_id}.")
@@ -85,9 +90,10 @@ class UpdateBatchExportRunStatusInputs:
 
     id: str
     status: str
+    latest_error: str | None = None
 
 
 @activity.defn
 async def update_export_run_status(inputs: UpdateBatchExportRunStatusInputs):
     """Activity that updates the status of an BatchExportRun."""
-    await sync_to_async(update_batch_export_run_status)(run_id=UUID(inputs.id), status=inputs.status)  # type: ignore
+    await sync_to_async(update_batch_export_run_status)(run_id=UUID(inputs.id), status=inputs.status, latest_error=inputs.latest_error)  # type: ignore

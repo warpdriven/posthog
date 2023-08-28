@@ -22,6 +22,9 @@
                 flex: 1;
                 font-weight: bold;
                 font-size: 13px;
+                text-overflow: ellipsis;
+                overflow: hidden;
+                white-space: nowrap;
             }
             .feature-flag-external-link {
                 color: rgba(0, 0, 0, 0.5);
@@ -32,7 +35,7 @@
             }
         }
         .feature-flag-row-header.overridden {
-            background-color: var(--mark-color);
+            background-color: var(--mark);
         }
 
         .variant-radio-group {
@@ -55,10 +58,11 @@
             }
         }
         .variant-radio-group.overridden {
-            border-left-color: var(--mark-color);
+            border-left-color: var(--mark);
         }
     }
     .local-feature-flag-override-note {
+        color: var(--default);
         background-color: #fafafa;
         border-radius: 4px;
         border: 1px solid var(--border);

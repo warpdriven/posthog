@@ -1,77 +1,87 @@
 import { useState } from 'react'
 import { BindLogic } from 'kea'
-import { ComponentMeta, ComponentStory } from '@storybook/react'
+import { Meta, StoryFn, StoryObj } from '@storybook/react'
 
 import { insightLogic } from 'scenes/insights/insightLogic'
-import { useStorybookMocks } from '~/mocks/browser'
-import { InsightsTableComponent, InsightsTableComponentProps } from './InsightsTable'
+import { insightVizDataNodeKey } from '~/queries/nodes/InsightViz/InsightViz'
+import { dataNodeLogic, DataNodeLogicProps } from '~/queries/nodes/DataNode/dataNodeLogic'
+import { filtersToQueryNode } from '~/queries/nodes/InsightQuery/utils/filtersToQueryNode'
 
-export default {
-    title: 'Insights/InsightsTableComponent',
-    component: InsightsTableComponent,
-} as ComponentMeta<typeof InsightsTableComponent>
+import { BaseMathType, InsightLogicProps } from '~/types'
 
-import { AggregationType } from './insightsTableDataLogic'
-import { CalcColumnState } from './insightsTableLogic'
+import { InsightsTable } from './InsightsTable'
+import { getCachedResults } from '~/queries/nodes/InsightViz/utils'
 
-const Template: ComponentStory<typeof InsightsTableComponent> = (props: Partial<InsightsTableComponentProps>) => {
+type Story = StoryObj<typeof InsightsTable>
+const meta: Meta<typeof InsightsTable> = {
+    title: 'Insights/InsightsTable',
+    component: InsightsTable,
+}
+export default meta
+
+let uniqueNode = 0
+
+const Template: StoryFn<typeof InsightsTable> = (props, { parameters }) => {
+    const [dashboardItemId] = useState(() => `InsightTableStory.${uniqueNode++}`)
+
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const insight = require('../../__mocks__/trendsLineBreakdown.json')
-    const insightProps = { dashboardItemId: `${insight.short_id}` }
+    const insight = require('../../../../mocks/fixtures/api/projects/:team_id/insights/trendsLineBreakdown.json')
+    const filters = { ...insight.filters, ...parameters.mergeFilters }
+    const cachedInsight = { ...insight, short_id: dashboardItemId, filters }
 
-    const [aggregation, setAggregation] = useState(AggregationType.Total)
+    const insightProps = { dashboardItemId, doNotLoad: true, cachedInsight } as InsightLogicProps
+    const querySource = filtersToQueryNode(filters)
 
-    useStorybookMocks({
-        get: {
-            '/api/projects/:team_id/insights/': (_, __, ctx) => [
-                ctx.status(200),
-                ctx.json({
-                    count: 1,
-                    results: [{ ...insight, short_id: insight.short_id, id: insight.id }],
-                }),
-            ],
-        },
-    })
+    const dataNodeLogicProps: DataNodeLogicProps = {
+        query: querySource,
+        key: insightVizDataNodeKey(insightProps),
+        cachedResults: getCachedResults(insightProps.cachedInsight, querySource),
+        doNotLoad: insightProps.doNotLoad,
+    }
 
     return (
         <BindLogic logic={insightLogic} props={insightProps}>
-            <InsightsTableComponent
-                aggregation={aggregation}
-                setAggregationType={(state: CalcColumnState) => setAggregation(AggregationType[state])}
-                isTrends
-                isNonTimeSeriesDisplay={false}
-                allowAggregation
-                handleSeriesEditClick={() => {}}
-                {...props}
-            />
+            <BindLogic logic={dataNodeLogic} props={dataNodeLogicProps}>
+                <InsightsTable {...props} />
+            </BindLogic>
         </BindLogic>
     )
 }
 
-export const Default = Template.bind({})
+export const Default: Story = Template.bind({})
 Default.args = {}
 
-export const IsLegend = Template.bind({})
+export const IsLegend: Story = Template.bind({})
 IsLegend.args = {
     isLegend: true,
 }
 
-export const Embedded = Template.bind({})
+export const Embedded: Story = Template.bind({})
 Embedded.args = {
     embedded: true,
 }
 
-export const Hourly = Template.bind({})
-Hourly.args = {
-    interval: 'hour',
+export const Hourly: Story = Template.bind({})
+Hourly.parameters = {
+    mergeFilters: { interval: 'hour' },
 }
 
-export const Aggregation = Template.bind({})
-Aggregation.args = {
-    allowAggregation: true,
+export const Aggregation: Story = Template.bind({})
+Aggregation.parameters = {
+    mergeFilters: {
+        events: [
+            {
+                id: '$pageview',
+                name: '$pageview',
+                type: 'events',
+                order: 0,
+                math: BaseMathType.UniqueSessions,
+            },
+        ],
+    },
 }
 
-export const CanEditSeriesName = Template.bind({})
+export const CanEditSeriesName: Story = Template.bind({})
 CanEditSeriesName.args = {
     canEditSeriesNameInline: true,
 }

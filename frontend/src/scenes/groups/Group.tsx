@@ -2,21 +2,18 @@ import { useActions, useValues } from 'kea'
 import { PropertiesTable } from 'lib/components/PropertiesTable'
 import { TZLabel } from 'lib/components/TZLabel'
 import { groupLogic } from 'scenes/groups/groupLogic'
-import { EventsTable } from 'scenes/events/EventsTable'
-import { urls } from 'scenes/urls'
 import { RelatedGroups } from 'scenes/groups/RelatedGroups'
 import { SceneExport } from 'scenes/sceneTypes'
-import { groupDisplayId } from 'scenes/persons/GroupActorHeader'
-import { Group as IGroup, PersonsTabType, PropertyDefinitionType, PropertyFilterType, PropertyOperator } from '~/types'
+import { groupDisplayId } from 'scenes/persons/GroupActorDisplay'
+import { Group as IGroup, PersonsTabType, PropertyDefinitionType } from '~/types'
 import { PageHeader } from 'lib/components/PageHeader'
 import { CopyToClipboardInline } from 'lib/components/CopyToClipboard'
 import { Spinner, SpinnerOverlay } from 'lib/lemon-ui/Spinner/Spinner'
 import { NotFound } from 'lib/components/NotFound'
 import { RelatedFeatureFlags } from 'scenes/persons/RelatedFeatureFlags'
 import { Query } from '~/queries/Query/Query'
-import { FEATURE_FLAGS } from 'lib/constants'
-import { featureFlagLogic } from 'lib/logic/featureFlagLogic'
 import { LemonTabs } from 'lib/lemon-ui/LemonTabs'
+import { GroupDashboard } from 'scenes/groups/GroupDashboard'
 
 export const scene: SceneExport = {
     component: Group,
@@ -57,13 +54,12 @@ export function Group(): JSX.Element {
         groupType,
         groupTab,
         groupEventsQuery,
+        showCustomerSuccessDashboards,
     } = useValues(groupLogic)
     const { setGroupTab, setGroupEventsQuery } = useActions(groupLogic)
-    const { featureFlags } = useValues(featureFlagLogic)
-    const featureDataExploration = featureFlags[FEATURE_FLAGS.HOGQL]
 
     if (!groupData) {
-        return groupDataLoading ? <SpinnerOverlay /> : <NotFound object="group" />
+        return groupDataLoading ? <SpinnerOverlay sceneLevel /> : <NotFound object="group" />
     }
 
     return (
@@ -91,28 +87,10 @@ export function Group(): JSX.Element {
                     {
                         key: PersonsTabType.EVENTS,
                         label: <span data-attr="persons-events-tab">Events</span>,
-                        content: featureDataExploration ? (
-                            groupEventsQuery ? (
-                                <Query query={groupEventsQuery} setQuery={setGroupEventsQuery} />
-                            ) : (
-                                <Spinner />
-                            )
+                        content: groupEventsQuery ? (
+                            <Query query={groupEventsQuery} setQuery={setGroupEventsQuery} />
                         ) : (
-                            <EventsTable
-                                pageKey={`${groupTypeIndex}::${groupKey}`}
-                                fixedFilters={{
-                                    properties: [
-                                        {
-                                            key: `$group_${groupTypeIndex}`,
-                                            value: groupKey,
-                                            type: PropertyFilterType.Event,
-                                            operator: PropertyOperator.Exact,
-                                        },
-                                    ],
-                                }}
-                                sceneUrl={urls.group(groupTypeIndex.toString(), groupKey)}
-                                showCustomizeColumns={false}
-                            />
+                            <Spinner />
                         ),
                     },
                     {
@@ -132,6 +110,13 @@ export function Group(): JSX.Element {
                             <RelatedFeatureFlags distinctId={groupData.group_key} groups={{ [groupType]: groupKey }} />
                         ),
                     },
+                    showCustomerSuccessDashboards
+                        ? {
+                              key: PersonsTabType.DASHBOARD,
+                              label: 'Dashboard',
+                              content: <GroupDashboard groupData={groupData} />,
+                          }
+                        : null,
                 ]}
             />
         </>

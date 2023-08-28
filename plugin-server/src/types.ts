@@ -16,21 +16,17 @@ import { Redis } from 'ioredis'
 import { Kafka } from 'kafkajs'
 import { DateTime } from 'luxon'
 import { Job } from 'node-schedule'
-import { Pool } from 'pg'
 import { VM } from 'vm2'
 
 import { ObjectStorage } from './main/services/object_storage'
 import { DB } from './utils/db/db'
 import { KafkaProducerWrapper } from './utils/db/kafka-producer-wrapper'
+import { PostgresRouter } from './utils/db/postgres' /** Re-export Element from scaffolding, for backwards compat. */
 import { UUID } from './utils/utils'
-import { ActionManager } from './worker/ingestion/action-manager'
-import { ActionMatcher } from './worker/ingestion/action-matcher'
 import { AppMetrics } from './worker/ingestion/app-metrics'
 import { EventPipelineResult } from './worker/ingestion/event-pipeline/runner'
-import { HookCommander } from './worker/ingestion/hooks'
 import { OrganizationManager } from './worker/ingestion/organization-manager'
 import { EventsProcessor } from './worker/ingestion/process-event'
-import { SiteUrlManager } from './worker/ingestion/site-url-manager'
 import { TeamManager } from './worker/ingestion/team-manager'
 import { PluginsApiKeyManager } from './worker/vm/extensions/helpers/api-key-manager'
 import { RootAccessManager } from './worker/vm/extensions/helpers/root-acess-manager'
@@ -73,6 +69,26 @@ export enum KafkaSaslMechanism {
     ScramSha512 = 'scram-sha-512',
 }
 
+export enum PluginServerMode {
+    ingestion = 'ingestion',
+    ingestion_overflow = 'ingestion-overflow',
+    ingestion_historical = 'ingestion-historical',
+    async_onevent = 'async-onevent',
+    async_webhooks = 'async-webhooks',
+    jobs = 'jobs',
+    scheduler = 'scheduler',
+    analytics_ingestion = 'analytics-ingestion',
+    recordings_ingestion = 'recordings-ingestion',
+    recordings_blob_ingestion = 'recordings-blob-ingestion',
+}
+
+export const stringToPluginServerMode = Object.fromEntries(
+    Object.entries(PluginServerMode).map(([key, value]) => [
+        value,
+        PluginServerMode[key as keyof typeof PluginServerMode],
+    ])
+) as Record<string, PluginServerMode>
+
 export interface PluginsServerConfig {
     WORKER_CONCURRENCY: number // number of concurrent worker threads
     TASKS_PER_WORKER: number // number of parallel tasks per worker thread
@@ -80,6 +96,9 @@ export interface PluginsServerConfig {
     INGESTION_BATCH_SIZE: number // kafka consumer batch size
     TASK_TIMEOUT: number // how many seconds until tasks are timed out
     DATABASE_URL: string // Postgres database URL
+    DATABASE_READONLY_URL: string // Optional read-only replica to the main Postgres database
+    PLUGIN_STORAGE_DATABASE_URL: string // Optional read-write Postgres database for plugin storage
+    POSTGRES_CONNECTION_POOL_SIZE: number
     POSTHOG_DB_NAME: string | null
     POSTHOG_DB_USER: string
     POSTHOG_DB_PASSWORD: string
@@ -95,15 +114,22 @@ export interface PluginsServerConfig {
     CLICKHOUSE_DISABLE_EXTERNAL_SCHEMAS: boolean // whether to disallow external schemas like protobuf for clickhouse kafka engine
     CLICKHOUSE_DISABLE_EXTERNAL_SCHEMAS_TEAMS: string // (advanced) a comma separated list of teams to disable clickhouse external schemas for
     CLICKHOUSE_JSON_EVENTS_KAFKA_TOPIC: string // (advanced) topic to send events to for clickhouse ingestion
+    REDIS_URL: string
+    POSTHOG_REDIS_PASSWORD: string
+    POSTHOG_REDIS_HOST: string
+    POSTHOG_REDIS_PORT: number
+    REDIS_POOL_MIN_SIZE: number // minimum number of Redis connections to use per thread
+    REDIS_POOL_MAX_SIZE: number // maximum number of Redis connections to use per thread
     KAFKA_HOSTS: string // comma-delimited Kafka hosts
-    KAFKA_CLIENT_CERT_B64: string | null
-    KAFKA_CLIENT_CERT_KEY_B64: string | null
-    KAFKA_TRUSTED_CERT_B64: string | null
-    KAFKA_SECURITY_PROTOCOL: KafkaSecurityProtocol | null
-    KAFKA_SASL_MECHANISM: KafkaSaslMechanism | null
-    KAFKA_SASL_USER: string | null
-    KAFKA_SASL_PASSWORD: string | null
-    KAFKA_CLIENT_RACK: string | null
+    KAFKA_CLIENT_CERT_B64: string | undefined
+    KAFKA_CLIENT_CERT_KEY_B64: string | undefined
+    KAFKA_TRUSTED_CERT_B64: string | undefined
+    KAFKA_SECURITY_PROTOCOL: KafkaSecurityProtocol | undefined
+    KAFKA_SASL_MECHANISM: KafkaSaslMechanism | undefined
+    KAFKA_SASL_USER: string | undefined
+    KAFKA_SASL_PASSWORD: string | undefined
+    KAFKA_CLIENT_RACK: string | undefined
+    KAFKA_CONSUMPTION_USE_RDKAFKA: boolean
     KAFKA_CONSUMPTION_MAX_BYTES: number
     KAFKA_CONSUMPTION_MAX_BYTES_PER_PARTITION: number
     KAFKA_CONSUMPTION_MAX_WAIT_MS: number // fetch.wait.max.ms rdkafka parameter
@@ -112,15 +138,12 @@ export interface PluginsServerConfig {
     KAFKA_CONSUMPTION_TOPIC: string | null
     KAFKA_CONSUMPTION_OVERFLOW_TOPIC: string | null
     KAFKA_CONSUMPTION_REBALANCE_TIMEOUT_MS: number | null
+    KAFKA_CONSUMPTION_SESSION_TIMEOUT_MS: number
     KAFKA_PRODUCER_MAX_QUEUE_SIZE: number
     KAFKA_PRODUCER_WAIT_FOR_ACK: boolean
     KAFKA_MAX_MESSAGE_BATCH_SIZE: number
     KAFKA_FLUSH_FREQUENCY_MS: number
     APP_METRICS_FLUSH_FREQUENCY_MS: number
-    REDIS_URL: string
-    POSTHOG_REDIS_PASSWORD: string
-    POSTHOG_REDIS_HOST: string
-    POSTHOG_REDIS_PORT: number
     BASE_DIR: string // base path for resolving local plugins
     PLUGINS_RELOAD_PUBSUB_CHANNEL: string // Redis channel for reload events'
     LOG_LEVEL: LogLevel
@@ -131,8 +154,6 @@ export interface PluginsServerConfig {
     STATSD_PORT: number
     STATSD_PREFIX: string
     SCHEDULE_LOCK_TTL: number // how many seconds to hold the lock for the schedule
-    REDIS_POOL_MIN_SIZE: number // minimum number of Redis connections to use per thread
-    REDIS_POOL_MAX_SIZE: number // maximum number of Redis connections to use per thread
     DISABLE_MMDB: boolean // whether to disable fetching MaxMind database for IP location
     DISTINCT_ID_LRU_SIZE: number
     EVENT_PROPERTY_LRU_SIZE: number // size of the event property tracker's LRU cache (keyed by [team.id, event])
@@ -166,17 +187,7 @@ export interface PluginsServerConfig {
     OBJECT_STORAGE_ACCESS_KEY_ID: string
     OBJECT_STORAGE_SECRET_ACCESS_KEY: string
     OBJECT_STORAGE_BUCKET: string // the object storage bucket name
-    PLUGIN_SERVER_MODE:
-        | 'ingestion'
-        | 'ingestion-overflow'
-        | 'async'
-        | 'exports'
-        | 'jobs'
-        | 'scheduler'
-        | 'analytics-ingestion'
-        | 'recordings-ingestion'
-        | 'recordings-blob-ingestion'
-        | null
+    PLUGIN_SERVER_MODE: PluginServerMode | null
     KAFKAJS_LOG_LEVEL: 'NOTHING' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'
     HISTORICAL_EXPORTS_ENABLED: boolean // enables historical exports for export apps
     HISTORICAL_EXPORTS_MAX_RETRY_COUNT: number
@@ -189,12 +200,22 @@ export interface PluginsServerConfig {
     EVENT_OVERFLOW_BUCKET_REPLENISH_RATE: number
     CLOUD_DEPLOYMENT: string
 
-    SESSION_RECORDING_BLOB_PROCESSING_TEAMS: string
     // local directory might be a volume mount or a directory on disk (e.g. in local dev)
     SESSION_RECORDING_LOCAL_DIRECTORY: string
     SESSION_RECORDING_MAX_BUFFER_AGE_SECONDS: number
     SESSION_RECORDING_MAX_BUFFER_SIZE_KB: number
+    SESSION_RECORDING_BUFFER_AGE_IN_MEMORY_MULTIPLIER: number
+    SESSION_RECORDING_BUFFER_AGE_JITTER: number
     SESSION_RECORDING_REMOTE_FOLDER: string
+    SESSION_RECORDING_REDIS_OFFSET_STORAGE_KEY: string
+
+    // Dedicated infra values
+    SESSION_RECORDING_KAFKA_HOSTS: string | undefined
+    SESSION_RECORDING_KAFKA_SECURITY_PROTOCOL: KafkaSecurityProtocol | undefined
+    SESSION_RECORDING_KAFKA_BATCH_SIZE: number
+    SESSION_RECORDING_KAFKA_QUEUE_SIZE: number
+    POSTHOG_SESSION_RECORDING_REDIS_HOST: string | undefined
+    POSTHOG_SESSION_RECORDING_REDIS_PORT: number | undefined
 }
 
 export interface Hub extends PluginsServerConfig {
@@ -203,7 +224,7 @@ export interface Hub extends PluginsServerConfig {
     capabilities: PluginServerCapabilities
     // active connections to Postgres, Redis, ClickHouse, Kafka, StatsD
     db: DB
-    postgres: Pool
+    postgres: PostgresRouter
     redisPool: GenericPool<Redis>
     clickhouse: ClickHouse
     kafka: Kafka
@@ -226,11 +247,7 @@ export interface Hub extends PluginsServerConfig {
     pluginsApiKeyManager: PluginsApiKeyManager
     rootAccessManager: RootAccessManager
     promiseManager: PromiseManager
-    actionManager: ActionManager
-    actionMatcher: ActionMatcher
-    hookCannon: HookCommander
     eventsProcessor: EventsProcessor
-    siteUrlManager: SiteUrlManager
     appMetrics: AppMetrics
     // geoip database, setup in workers
     mmdb?: ReaderModel
@@ -244,13 +261,18 @@ export interface Hub extends PluginsServerConfig {
 }
 
 export interface PluginServerCapabilities {
+    // Warning: when adding more entries, make sure to update worker/vm/capabilities.ts
+    // and the shouldSetupPluginInServer() test accordingly.
     ingestion?: boolean
     ingestionOverflow?: boolean
+    ingestionHistorical?: boolean
     pluginScheduledTasks?: boolean
     processPluginJobs?: boolean
-    processAsyncHandlers?: boolean
+    processAsyncOnEventHandlers?: boolean
+    processAsyncWebhooksHandlers?: boolean
     sessionRecordingIngestion?: boolean
     sessionRecordingBlobIngestion?: boolean
+    transpileFrontendApps?: boolean // TODO: move this away from pod startup, into a graphile job
     http?: boolean
     mmdb?: boolean
 }
@@ -434,7 +456,7 @@ export interface PluginTask {
 }
 
 export type WorkerMethods = {
-    runAsyncHandlersEventPipeline: (event: PostIngestionEvent) => Promise<void>
+    runAppsOnEventPipeline: (event: PostIngestionEvent) => Promise<void>
     runEventPipeline: (event: PipelineEvent) => Promise<EventPipelineResult>
 }
 
@@ -443,7 +465,6 @@ export type VMMethods = {
     teardownPlugin?: () => Promise<void>
     getSettings?: () => PluginSettings
     onEvent?: (event: ProcessedPluginEvent) => Promise<void>
-    onSnapshot?: (event: ProcessedPluginEvent) => Promise<void>
     exportEvents?: (events: PluginEvent[]) => Promise<void>
     processEvent?: (event: PluginEvent) => Promise<PluginEvent>
 }
@@ -871,6 +892,8 @@ export interface RawAction {
     is_calculating: boolean
     updated_at: string
     last_calculated_at: string
+    bytecode?: any[]
+    bytecode_error?: string
 }
 
 /** Usable Action model. */
@@ -1084,7 +1107,7 @@ export interface EventPropertyType {
     team_id: number
 }
 
-export type PluginFunction = 'onEvent' | 'processEvent' | 'onSnapshot' | 'pluginTask'
+export type PluginFunction = 'onEvent' | 'processEvent' | 'pluginTask'
 
 export type GroupTypeToColumnIndex = Record<string, GroupTypeIndex>
 
@@ -1111,4 +1134,12 @@ export enum OrganizationMembershipLevel {
 export interface PipelineEvent extends Omit<PluginEvent, 'team_id'> {
     team_id?: number | null
     token?: string
+}
+
+export type RedisPool = GenericPool<Redis>
+
+export type RRWebEvent = Record<string, any> & {
+    timestamp: number
+    type: number
+    data: any
 }

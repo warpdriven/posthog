@@ -1,4 +1,4 @@
-import { mswDecorator, useFeatureFlags } from '~/mocks/browser'
+import { mswDecorator } from '~/mocks/browser'
 import { Meta } from '@storybook/react'
 import { useAvailableFeatures } from '~/mocks/features'
 import { AvailableFeature } from '~/types'
@@ -7,7 +7,6 @@ import { router } from 'kea-router'
 import { urls } from 'scenes/urls'
 import { App } from 'scenes/App'
 import { DatabaseSchemaQueryResponse } from '~/queries/schema'
-import { FEATURE_FLAGS } from 'lib/constants'
 import { ingestionWarningsResponse } from './ingestion-warnings/__mocks__/ingestion-warnings-response'
 import { dayjs } from 'lib/dayjs'
 
@@ -80,11 +79,10 @@ const MOCK_DATABASE: DatabaseSchemaQueryResponse = {
     ],
 }
 
-export default {
+const meta: Meta = {
     title: 'Scenes-App/Data Management',
     parameters: {
         layout: 'fullscreen',
-        options: { showPanel: false },
         testOptions: {
             excludeNavigationFromSnapshot: true,
         },
@@ -107,11 +105,10 @@ export default {
             },
         }),
     ],
-} as Meta
-
+}
+export default meta
 export function Database(): JSX.Element {
     useAvailableFeatures([AvailableFeature.EXPERIMENTATION])
-    useFeatureFlags([FEATURE_FLAGS.HOGQL])
     useEffect(() => {
         router.actions.push(urls.database())
     }, [])

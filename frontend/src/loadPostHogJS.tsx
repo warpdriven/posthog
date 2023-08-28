@@ -24,7 +24,7 @@ export function loadPostHogJS(): void {
                 api_host: window.JS_POSTHOG_HOST,
                 rageclick: true,
                 persistence: 'localStorage+cookie',
-                bootstrap: !!window.POSTHOG_USER_IDENTITY_WITH_FLAGS ? window.POSTHOG_USER_IDENTITY_WITH_FLAGS : {},
+                bootstrap: window.POSTHOG_USER_IDENTITY_WITH_FLAGS ? window.POSTHOG_USER_IDENTITY_WITH_FLAGS : {},
                 opt_in_site_apps: true,
                 loaded: (posthog) => {
                     if (posthog.webPerformance) {
@@ -39,6 +39,17 @@ export function loadPostHogJS(): void {
                 },
             })
         )
+
+        const Cypress = (window as any).Cypress
+        if (Cypress) {
+            Object.entries(Cypress.env()).forEach(([key, value]) => {
+                if (key.startsWith('POSTHOG_PROPERTY_')) {
+                    posthog.register_for_session({
+                        [key.replace('POSTHOG_PROPERTY_', 'E2E_TESTING_').toLowerCase()]: value,
+                    })
+                }
+            })
+        }
 
         // This is a helpful flag to set to automatically reset the recording session on load for testing multiple recordings
         const shouldResetSessionOnLoad = posthog.getFeatureFlag(FEATURE_FLAGS.SESSION_RESET_ON_LOAD)

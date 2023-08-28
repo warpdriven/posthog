@@ -1,6 +1,7 @@
 import clsx from 'clsx'
 import { useMemo, useState } from 'react'
 import './LemonSwitch.scss'
+import { Tooltip } from 'lib/lemon-ui/Tooltip'
 
 export interface LemonSwitchProps {
     className?: string
@@ -12,10 +13,12 @@ export interface LemonSwitchProps {
     fullWidth?: boolean
     bordered?: boolean
     disabled?: boolean
+    /** Like plain `disabled`, except we enforce a reason to be shown in the tooltip. */
+    disabledReason?: string | null | false
     'data-attr'?: string
-    size?: 'small' | 'medium'
     icon?: React.ReactElement | null
     handleContent?: React.ReactElement | null
+    'aria-label'?: string
 }
 
 /** Counter used for collision-less automatic switch IDs. */
@@ -29,14 +32,56 @@ export function LemonSwitch({
     fullWidth,
     bordered,
     disabled,
+    disabledReason,
     label,
     labelClassName,
     icon,
     'data-attr': dataAttr,
+    'aria-label': ariaLabel,
     handleContent,
 }: LemonSwitchProps): JSX.Element {
     const id = useMemo(() => rawId || `lemon-switch-${switchCounter++}`, [rawId])
     const [isActive, setIsActive] = useState(false)
+
+    const conditionalProps = {}
+    if (ariaLabel) {
+        conditionalProps['aria-label'] = ariaLabel
+    }
+
+    let tooltipContent: JSX.Element | null = null
+    if (disabledReason) {
+        disabled = true // Support `disabledReason` while maintaining compatibility with `disabled`
+        tooltipContent = <span className="italic">{disabledReason}</span>
+    }
+    let buttonComponent = (
+        <button
+            id={id}
+            className="LemonSwitch__button"
+            role="switch"
+            onClick={() => {
+                if (onChange) {
+                    onChange(!checked)
+                }
+            }}
+            onMouseDown={() => setIsActive(true)}
+            onMouseUp={() => setIsActive(false)}
+            onMouseOut={() => setIsActive(false)}
+            data-attr={dataAttr}
+            disabled={disabled}
+            {...conditionalProps}
+        >
+            <div className="LemonSwitch__slider" />
+            <div className="LemonSwitch__handle">{handleContent}</div>
+        </button>
+    )
+    if (tooltipContent) {
+        buttonComponent = (
+            <Tooltip title={tooltipContent}>
+                {/* wrap it in a div so that the tooltip works even when disabled */}
+                <div>{buttonComponent}</div>
+            </Tooltip>
+        )
+    }
 
     return (
         <div
@@ -54,24 +99,7 @@ export function LemonSwitch({
                     {label}
                 </label>
             )}
-            <button
-                id={id}
-                className="LemonSwitch__button"
-                role="switch"
-                onClick={() => {
-                    if (onChange) {
-                        onChange(!checked)
-                    }
-                }}
-                onMouseDown={() => setIsActive(true)}
-                onMouseUp={() => setIsActive(false)}
-                onMouseOut={() => setIsActive(false)}
-                data-attr={dataAttr}
-                disabled={disabled}
-            >
-                <div className="LemonSwitch__slider" />
-                <div className="LemonSwitch__handle">{handleContent}</div>
-            </button>
+            {buttonComponent}
         </div>
     )
 }

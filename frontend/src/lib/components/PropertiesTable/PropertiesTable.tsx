@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 
-import { keyMappingKeys, PropertyKeyInfo } from '../PropertyKeyInfo'
+import { KEY_MAPPING, keyMappingKeys } from 'lib/taxonomy'
+import { PropertyKeyInfo } from '../PropertyKeyInfo'
 import { Dropdown, Input, Menu, Popconfirm } from 'antd'
 import { isURL } from 'lib/utils'
 import { IconDeleteForever, IconOpenInNew } from 'lib/lemon-ui/icons'
@@ -140,7 +141,7 @@ function ValueDisplay({
     )
 }
 interface PropertiesTableType extends BasePropertyType {
-    properties: any
+    properties?: Record<string, any>
     sortProperties?: boolean
     searchable?: boolean
     filterable?: boolean
@@ -197,17 +198,20 @@ export function PropertiesTable({
     }
 
     const objectProperties = useMemo(() => {
-        if (!(properties instanceof Object)) {
+        if (!properties || !(properties instanceof Object)) {
             return []
         }
         let entries = Object.entries(properties)
         if (searchTerm) {
             const normalizedSearchTerm = searchTerm.toLowerCase()
-            entries = entries.filter(
-                ([key, value]) =>
+            entries = entries.filter(([key, value]) => {
+                const label = KEY_MAPPING.event[key]?.label?.toLowerCase()
+                return (
                     key.toLowerCase().includes(normalizedSearchTerm) ||
+                    (label && label.includes(normalizedSearchTerm)) ||
                     JSON.stringify(value).toLowerCase().includes(normalizedSearchTerm)
-            )
+                )
+            })
         }
 
         if (filterable && filtered) {
@@ -222,6 +226,12 @@ export function PropertiesTable({
                     if (aHighlightValue !== bHighlightValue) {
                         return aHighlightValue - bHighlightValue
                     }
+                }
+
+                if (aKey.startsWith('$') && !bKey.startsWith('$')) {
+                    return 1
+                } else if (!aKey.startsWith('$') && bKey.startsWith('$')) {
+                    return -1
                 }
                 return aKey.localeCompare(bKey)
             })
@@ -378,7 +388,7 @@ export function PropertiesTable({
                     onRow={(record) =>
                         highlightedKeys?.includes(record[0])
                             ? {
-                                  style: { background: 'var(--mark-color)' },
+                                  style: { background: 'var(--mark)' },
                               }
                             : {}
                     }
