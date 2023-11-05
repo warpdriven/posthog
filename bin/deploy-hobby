@@ -4,7 +4,7 @@ set -e
 
 export DEBIAN_FRONTEND=noninteractive
 # Automatically restart without asking.
-# this gets around needrestart command halting for user input
+# this gets around need restart command halting for user input
 export RESTART_MODE=l
 export POSTHOG_APP_TAG="${POSTHOG_APP_TAG:-latest}"
 export SENTRY_DSN="${SENTRY_DSN:-'https://public@sentry.example.com/1'}"
@@ -13,7 +13,7 @@ POSTHOG_SECRET=$(head -c 28 /dev/urandom | sha224sum -b | head -c 56)
 export POSTHOG_SECRET
 
 # Talk to the user
-echo "Welcome to the single instance PostHog installer 🦔"
+echo "Welcome to the WarpDriven single instance PostHog installer 🦔"
 echo ""
 echo "⚠️  You really need 4gb or more of memory to run this stack ⚠️"
 echo ""
@@ -60,14 +60,14 @@ echo "Ok! We'll take it from here 🚀"
 echo "Making sure any stack that might exist is stopped"
 sudo -E docker-compose -f docker-compose.yml stop &> /dev/null || true
 
-# send log of this install for continued support!
-curl -o /dev/null -L --header "Content-Type: application/json" -d "{
-    \"api_key\": \"sTMFPsFhdP1Ssg\",
-    \"distinct_id\": \"${DOMAIN}\",
-    \"properties\": {\"domain\": \"${DOMAIN}\"},
-    \"type\": \"capture\",
-    \"event\": \"magic_curl_install_start\"
-}" https://app.posthog.com/batch/ &> /dev/null
+## send log of this install for continued support!
+#curl -o /dev/null -L --header "Content-Type: application/json" -d "{
+#    \"api_key\": \"sTMFPsFhdP1Ssg\",
+#    \"distinct_id\": \"${DOMAIN}\",
+#    \"properties\": {\"domain\": \"${DOMAIN}\"},
+#    \"type\": \"capture\",
+#    \"event\": \"magic_curl_install_start\"
+#}" https://app.posthog.com/batch/ &> /dev/null
 
 # update apt cache
 echo "Grabbing latest apt caches"
@@ -75,10 +75,10 @@ sudo apt update
 
 # clone posthog
 echo "Installing PostHog 🦔 from Github"
-sudo apt install -y git
+#sudo apt install -y git
 # try to clone - if folder is already there pull latest for that branch
-git clone https://github.com/PostHog/posthog.git &> /dev/null || true
-cd posthog
+#git clone https://github.com/warpdriven/posthog.git &> /dev/null || true
+#cd posthog
 
 if [[ "$POSTHOG_APP_TAG" = "latest-release" ]]
 then
@@ -200,14 +200,14 @@ bash -c 'while [[ "$(curl -s -o /dev/null -w ''%{http_code}'' localhost/_health)
 echo "⌛️ PostHog looks up!"
 echo ""
 echo "🎉🎉🎉  Done! 🎉🎉🎉"
-# send log of this install for continued support!
-curl -o /dev/null -L --header "Content-Type: application/json" -d "{
-    \"api_key\": \"sTMFPsFhdP1Ssg\",
-    \"distinct_id\": \"${DOMAIN}\",
-    \"properties\": {\"domain\": \"${DOMAIN}\"},
-    \"type\": \"capture\",
-    \"event\": \"magic_curl_install_complete\"
-}" https://app.posthog.com/batch/ &> /dev/null
+## send log of this install for continued support!
+#curl -o /dev/null -L --header "Content-Type: application/json" -d "{
+#    \"api_key\": \"sTMFPsFhdP1Ssg\",
+#    \"distinct_id\": \"${DOMAIN}\",
+#    \"properties\": {\"domain\": \"${DOMAIN}\"},
+#    \"type\": \"capture\",
+#    \"event\": \"magic_curl_install_complete\"
+#}" https://app.posthog.com/batch/ &> /dev/null
 echo ""
 echo "To stop the stack run 'docker-compose stop'"
 echo "To start the stack again run 'docker-compose start'"
