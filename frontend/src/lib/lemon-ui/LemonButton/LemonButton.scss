@@ -194,7 +194,7 @@
         }
     }
 
-    @each $status in ('default', 'primary', 'danger', 'primary-alt', 'muted', 'muted-alt') {
+    @each $status in ('primary', 'danger', 'primary-alt', 'muted') {
         &.LemonButton--status-#{$status} {
             color: var(--#{$status}, var(--primary));
 
@@ -253,6 +253,19 @@
                     border-color: var(--#{$status}-dark, var(--status));
                 }
             }
+        }
+    }
+
+    .ant-tooltip & {
+        // Buttons have an overriden style in tooltips, as they are always dark
+        &:hover {
+            background: rgba(255, 255, 255, 0.15) !important;
+        }
+        &:active {
+            background: rgba(255, 255, 255, 0.2) !important;
+        }
+        .LemonButton__icon {
+            color: #fff !important;
         }
     }
 

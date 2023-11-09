@@ -19,6 +19,8 @@ import {
     ExportedAssetType,
     FeatureFlagAssociatedRoleType,
     FeatureFlagType,
+    OrganizationFeatureFlags,
+    OrganizationFeatureFlagsCopyBody,
     InsightModel,
     IntegrationType,
     MediaUploadResponse,
@@ -176,6 +178,20 @@ class ApiRequest {
 
     public organizationResourceAccessDetail(id: OrganizationResourcePermissionType['id']): ApiRequest {
         return this.organizationResourceAccess().addPathComponent(id)
+    }
+
+    public organizationFeatureFlags(orgId: OrganizationType['id'], featureFlagKey: FeatureFlagType['key']): ApiRequest {
+        return this.organizations()
+            .addPathComponent(orgId)
+            .addPathComponent('feature_flags')
+            .addPathComponent(featureFlagKey)
+    }
+
+    public copyOrganizationFeatureFlags(orgId: OrganizationType['id']): ApiRequest {
+        return this.organizations()
+            .addPathComponent(orgId)
+            .addPathComponent('feature_flags')
+            .addPathComponent('copy_flags')
     }
 
     // # Projects
@@ -573,6 +589,10 @@ class ApiRequest {
         return this.projectsDetail(teamId).addPathComponent('external_data_sources')
     }
 
+    public externalDataSource(sourceId: ExternalDataStripeSource['id'], teamId?: TeamType['id']): ApiRequest {
+        return this.externalDataSources(teamId).addPathComponent(sourceId)
+    }
+
     // Request finalization
     public async get(options?: ApiMethodOptions): Promise<any> {
         return await api.get(this.assembleFullUrl(), options)
@@ -667,6 +687,21 @@ const api = {
     featureFlags: {
         async get(id: FeatureFlagType['id']): Promise<FeatureFlagType> {
             return await new ApiRequest().featureFlag(id).get()
+        },
+    },
+
+    organizationFeatureFlags: {
+        async get(
+            orgId: OrganizationType['id'] = getCurrentOrganizationId(),
+            featureFlagKey: FeatureFlagType['key']
+        ): Promise<OrganizationFeatureFlags> {
+            return await new ApiRequest().organizationFeatureFlags(orgId, featureFlagKey).get()
+        },
+        async copy(
+            orgId: OrganizationType['id'] = getCurrentOrganizationId(),
+            data: OrganizationFeatureFlagsCopyBody
+        ): Promise<{ success: FeatureFlagType[]; failed: any }> {
+            return await new ApiRequest().copyOrganizationFeatureFlags(orgId).create({ data })
         },
     },
 
@@ -1586,6 +1621,12 @@ const api = {
             data: Partial<ExternalDataStripeSourceCreatePayload>
         ): Promise<ExternalDataStripeSourceCreatePayload> {
             return await new ApiRequest().externalDataSources().create({ data })
+        },
+        async delete(sourceId: ExternalDataStripeSource['id']): Promise<void> {
+            await new ApiRequest().externalDataSource(sourceId).delete()
+        },
+        async reload(sourceId: ExternalDataStripeSource['id']): Promise<void> {
+            await new ApiRequest().externalDataSource(sourceId).withAction('reload').create()
         },
     },
 

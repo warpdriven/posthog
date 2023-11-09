@@ -82,11 +82,15 @@ module.exports = {
                         name: 'dayjs',
                         message: 'Do not directly import dayjs. Only import the dayjs exported from lib/dayjs.',
                     },
+                    {
+                        name: '@ant-design/icons',
+                        message: 'Please use icons from the @posthog/icons package instead',
+                    },
                 ],
             },
         ],
         'react/forbid-dom-props': [
-            1,
+            'warn',
             {
                 forbid: [
                     {
@@ -98,7 +102,7 @@ module.exports = {
             },
         ],
         'posthog/warn-elements': [
-            1,
+            'warn',
             {
                 forbid: [
                     {
@@ -109,10 +113,6 @@ module.exports = {
                     {
                         element: 'Col',
                         message: 'use flex utility classes instead - most of the time can simply be a plain <div>',
-                    },
-                    {
-                        element: 'Space',
-                        message: 'use flex or space utility classes instead',
                     },
                     {
                         element: 'Divider',
@@ -150,7 +150,7 @@ module.exports = {
             },
         ],
         'react/forbid-elements': [
-            2,
+            'error',
             {
                 forbid: [
                     {
@@ -160,6 +160,10 @@ module.exports = {
                     {
                         element: 'Tabs',
                         message: 'use <LemonTabs> instead',
+                    },
+                    {
+                        element: 'Space',
+                        message: 'use flex or space utility classes instead',
                     },
                     {
                         element: 'Spin',
@@ -172,6 +176,10 @@ module.exports = {
                     {
                         element: 'Collapse',
                         message: 'use <LemonCollapse> instead',
+                    },
+                    {
+                        element: 'Checkbox',
+                        message: 'use <LemonCheckbox> instead',
                     },
                     {
                         element: 'MonacoEditor',
@@ -196,9 +204,9 @@ module.exports = {
                 ],
             },
         ],
-        'no-constant-condition': 0,
-        'no-prototype-builtins': 0,
-        'no-irregular-whitespace': 0,
+        'no-constant-condition': 'off',
+        'no-prototype-builtins': 'off',
+        'no-irregular-whitespace': 'off',
     },
     overrides: [
         {
